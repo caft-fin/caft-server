@@ -9,19 +9,35 @@ import { env } from '../config/env';
 import { prisma } from '../config/database';
 import { JwtPayload } from '../types';
 import { AppError } from '../utils/apiResponse';
-import { generateOtp, addDays } from '../utils/helpers';
+import { generateOtp, generateReferralCode, addDays } from '../utils/helpers';
 import { EmailService } from './email.service';
 
 export class AuthService {
   /**
-   * Initiate login by sending OTP to an EXISTING user's email.
-   * No self-registration — users must be created by an admin first.
+   * Initiate login by sending OTP to the user's email.
+   * If the email doesn't exist, auto-register the user first.
    */
   static async initiateLogin(email: string) {
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user = await prisma.user.findUnique({ where: { email } });
 
+    // Auto-register new users
     if (!user) {
-      throw new AppError('No account found with this email. Contact your administrator.', 404);
+      const namePart = email.split('@')[0].replace(/[._-]/g, ' ');
+      const displayName = namePart
+        .split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+
+      user = await prisma.user.create({
+        data: {
+          email,
+          name: displayName,
+          role: 'USER',
+          isActive: true,
+          referralCode: generateReferralCode(displayName),
+        },
+      });
+      console.log(`\n✅ New user auto-registered: ${email} (name: ${displayName})\n`);
     }
 
     if (!user.isActive) throw new AppError('Account is deactivated. Contact support.', 403);
@@ -36,6 +52,14 @@ export class AuthService {
     });
 
     await prisma.otpToken.create({ data: { userId: user.id, code: otp, expiresAt } });
+
+    // Print OTP to terminal since no email service is configured
+    console.log(`\n🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+    console.log(`   OTP for ${email}: ${otp}`);
+    console.log(`   Expires at: ${expiresAt.toLocaleTimeString()}`);
+    console.log(`🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+
+    // Also try to send via email (will silently fail if SES not configured)
     await EmailService.sendOtpEmail(email, otp, user.name);
 
     return { message: `OTP sent to ${email}` };

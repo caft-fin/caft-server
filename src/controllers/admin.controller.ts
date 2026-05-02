@@ -262,4 +262,143 @@ export class AdminController {
       ApiResponse.success(res, data, 'Settings updated');
     } catch (error) { next(error); }
   }
+
+  // ── Danger Zone (SUPERADMIN ONLY) ──────────────────────
+
+  /** Whitelist of Prisma model names → DB table names */
+  private static readonly TABLE_MAP: Record<string, string> = {
+    User: 'users',
+    OtpToken: 'otp_tokens',
+    RefreshToken: 'refresh_tokens',
+    Plan: 'plans',
+    PlanFeature: 'plan_features',
+    Subscription: 'subscriptions',
+    Payment: 'payments',
+    Transaction: 'transactions',
+    LinkedAccount: 'linked_accounts',
+    EmailCampaign: 'email_campaigns',
+    EmailRecipient: 'email_recipients',
+    EmailTemplate: 'email_templates',
+    NotificationPreference: 'notification_preferences',
+    AdminSetting: 'admin_settings',
+    AuditLog: 'audit_logs',
+  };
+
+  /** Models that have a createdAt column for ordering */
+  private static readonly HAS_CREATED_AT = new Set([
+    'User', 'OtpToken', 'RefreshToken', 'Plan', 'Subscription', 'Payment',
+    'Transaction', 'LinkedAccount', 'EmailCampaign', 'EmailTemplate',
+    'NotificationPreference', 'AdminSetting', 'AuditLog',
+  ]);
+
+  /** Helper to get a Prisma delegate by model name */
+  private static getDelegate(modelName: string): any {
+    const map: Record<string, any> = {
+      User: prisma.user,
+      OtpToken: prisma.otpToken,
+      RefreshToken: prisma.refreshToken,
+      Plan: prisma.plan,
+      PlanFeature: prisma.planFeature,
+      Subscription: prisma.subscription,
+      Payment: prisma.payment,
+      Transaction: prisma.transaction,
+      LinkedAccount: prisma.linkedAccount,
+      EmailCampaign: prisma.emailCampaign,
+      EmailRecipient: prisma.emailRecipient,
+      EmailTemplate: prisma.emailTemplate,
+      NotificationPreference: prisma.notificationPreference,
+      AdminSetting: prisma.adminSetting,
+      AuditLog: prisma.auditLog,
+    };
+    return map[modelName] ?? null;
+  }
+
+  /** GET /api/admin/danger/tables — List all database tables */
+  static async listTables(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const tables = Object.entries(AdminController.TABLE_MAP).map(([name, dbTable]) => ({
+        name,
+        dbTable,
+      }));
+      ApiResponse.success(res, tables);
+    } catch (error) { next(error); }
+  }
+
+  /** GET /api/admin/danger/tables/:table — Get all records from a table */
+  static async getTableRecords(req: Request, res: Response, next: NextFunction) {
+    try {
+      const modelName: string = String(req.params.table);
+      if (!AdminController.TABLE_MAP[modelName]) {
+        throw new AppError(`Unknown table: ${modelName}`, 400);
+      }
+
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 100, 500);
+      const delegate = AdminController.getDelegate(modelName);
+
+      // Only order by createdAt for models that have it
+      const findOptions: any = {
+        skip: (page - 1) * limit,
+        take: limit,
+      };
+      if (AdminController.HAS_CREATED_AT.has(modelName)) {
+        findOptions.orderBy = { createdAt: 'desc' };
+      }
+
+      const [records, total] = await Promise.all([
+        delegate.findMany(findOptions),
+        delegate.count(),
+      ]);
+
+      // Serialize BigInt/Decimal values to strings for JSON
+      const serialized = JSON.parse(JSON.stringify(records, (_key: string, v: any) =>
+        typeof v === 'bigint' ? v.toString() : v
+      ));
+
+      const totalPages = Math.ceil(total / limit);
+      ApiResponse.paginated(res, serialized, {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      });
+    } catch (error) { next(error); }
+  }
+
+  /** DELETE /api/admin/danger/tables/:table/:id — Hard-delete a record */
+  static async deleteRecord(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const modelName: string = String(req.params.table);
+      const recordId: string = String(req.params.id);
+      if (!AdminController.TABLE_MAP[modelName]) {
+        throw new AppError(`Unknown table: ${modelName}`, 400);
+      }
+
+      const delegate = AdminController.getDelegate(modelName);
+
+      // Prevent deletion of the superadmin user
+      if (modelName === 'User') {
+        const target = await prisma.user.findUnique({ where: { id: recordId } });
+        if (target?.isSuperAdmin) {
+          throw new AppError('Cannot delete the Superadmin account', 403);
+        }
+      }
+
+      await delegate.delete({ where: { id: recordId } });
+
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user?.userId,
+          action: 'DANGER_DELETE_RECORD',
+          entity: modelName,
+          entityId: recordId,
+          details: JSON.stringify({ table: AdminController.TABLE_MAP[modelName] }),
+        },
+      });
+
+      ApiResponse.success(res, null, `Record deleted from ${AdminController.TABLE_MAP[modelName]}`);
+    } catch (error) { next(error); }
+  }
 }

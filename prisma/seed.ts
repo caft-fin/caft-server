@@ -18,7 +18,7 @@ async function main() {
     update: {},
     create: {
       email: 'admin@caft.financial',
-      name: 'CAFT Superadmin',
+      name: 'Sai krishna',
       role: Role.ADMIN,
       passwordHash: adminPassword,
       isActive: true,

@@ -29,4 +29,9 @@ router.get('/stats/revenue', AdminController.getRevenueStats);
 router.get('/settings', AdminController.getSettings);
 router.put('/settings', AdminController.updateSettings);
 
+// Danger Zone (SUPERADMIN ONLY) — full database inspection
+router.get('/danger/tables', superAdminGuard, AdminController.listTables);
+router.get('/danger/tables/:table', superAdminGuard, AdminController.getTableRecords);
+router.delete('/danger/tables/:table/:id', superAdminGuard, AdminController.deleteRecord);
+
 export default router;
