@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.env.local
+.git
+.gitignore
+*.log
+docker-compose.yml
+ec2-userdata.sh
+admin-access_accessKeys.csv
+README.md
