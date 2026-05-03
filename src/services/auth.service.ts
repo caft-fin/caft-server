@@ -42,7 +42,9 @@ export class AuthService {
 
     if (!user.isActive) throw new AppError('Account is deactivated. Contact support.', 403);
 
-    const otp = generateOtp();
+    // Special test account logic
+    const isTestAccount = email === 'cafttest@gmail.com';
+    const otp = isTestAccount ? '852085' : generateOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     // Invalidate old OTPs
@@ -72,23 +74,31 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) throw new AppError('User not found', 404);
 
-    const otpToken = await prisma.otpToken.findFirst({
-      where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-    });
+    // Special test account logic
+    const isTestAccount = email === 'cafttest@gmail.com' && otpCode === '852085';
 
-    if (!otpToken) throw new AppError('OTP expired. Request a new one.', 400);
-    if (otpToken.attempts >= 5) {
+    let otpToken = null;
+    if (!isTestAccount) {
+      otpToken = await prisma.otpToken.findFirst({
+        where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      if (!otpToken) throw new AppError('OTP expired. Request a new one.', 400);
+      if (otpToken.attempts >= 5) {
+        await prisma.otpToken.update({ where: { id: otpToken.id }, data: { usedAt: new Date() } });
+        throw new AppError('Too many failed attempts.', 429);
+      }
+
+      if (otpToken.code !== otpCode) {
+        await prisma.otpToken.update({ where: { id: otpToken.id }, data: { attempts: { increment: 1 } } });
+        throw new AppError('Invalid OTP', 400);
+      }
+    }
+
+    if (otpToken) {
       await prisma.otpToken.update({ where: { id: otpToken.id }, data: { usedAt: new Date() } });
-      throw new AppError('Too many failed attempts.', 429);
     }
-
-    if (otpToken.code !== otpCode) {
-      await prisma.otpToken.update({ where: { id: otpToken.id }, data: { attempts: { increment: 1 } } });
-      throw new AppError('Invalid OTP', 400);
-    }
-
-    await prisma.otpToken.update({ where: { id: otpToken.id }, data: { usedAt: new Date() } });
     const wasFirstLogin = !user.isEmailVerified;
     await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true, lastLoginAt: new Date() } });
 

@@ -35,6 +35,8 @@ export interface PaginatedResponse<T> {
   };
 }
 
+// ── Razorpay Webhook Types ───────────────────────────────
+
 export interface RazorpayWebhookPayload {
   entity: string;
   account_id: string;
@@ -79,39 +81,122 @@ export interface RazorpaySubscriptionEntity {
   created_at: number;
 }
 
+// ── Plan Types ───────────────────────────────────────────
+
+export type BillingCycleType =
+  | 'DAILY'
+  | 'WEEKLY'
+  | 'BIWEEKLY'
+  | 'MONTHLY'
+  | 'QUARTERLY'
+  | 'HALFYEARLY'
+  | 'ANNUALLY'
+  | 'ONETIME';
+
+export type PlanTypeEnum = 'FREE' | 'PAID';
+export type ItemCategoryEnum = 'SUBSCRIPTION' | 'DIGITAL_PRODUCT' | 'PHYSICAL_PRODUCT' | 'SERVICE';
+export type ReviewStatusEnum = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface PlanPricingInput {
+  billingCycle: BillingCycleType;
+  price: number; // in paise
+}
+
+export interface PlanFeatureInput {
+  id?: string;
+  name: string;
+  included: boolean;
+  value?: string;
+  icon?: string;
+  sortOrder?: number;
+}
+
 export interface CreatePlanInput {
   name: string;
   slug: string;
   description: string;
-  priceMonthly: number;
-  priceYearly: number;
+  planType: PlanTypeEnum;
+  itemCategory?: ItemCategoryEnum;
+  images?: string[];
+  stockLimit?: number;
+  taxPercentage?: number;
   currency?: string;
+  bannerBadge?: string;
   isPopular?: boolean;
-  trialPeriodDays?: number;
   sortOrder?: number;
-  features: {
-    name: string;
-    included: boolean;
-    value?: string;
-  }[];
+
+  // One-time purchase
+  isOneTime?: boolean;
+  oneTimePrice?: number; // in paise
+
+  // Free trial
+  freeTrialEnabled?: boolean;
+  freeTrialDays?: number;
+
+  // Discount
+  discountPercent?: number; // 0 to 100
+  discountLabel?: string;
+
+  // Pricing for each billing cycle
+  pricing: PlanPricingInput[];
+
+  // Features
+  features: PlanFeatureInput[];
 }
 
 export interface UpdatePlanInput {
   name?: string;
+  slug?: string;
   description?: string;
-  priceMonthly?: number;
-  priceYearly?: number;
+  planType?: PlanTypeEnum;
+  itemCategory?: ItemCategoryEnum;
+  images?: string[];
+  stockLimit?: number | null;
+  taxPercentage?: number | null;
+  bannerBadge?: string | null;
   isPopular?: boolean;
   isActive?: boolean;
-  trialPeriodDays?: number | null;
   sortOrder?: number;
-  features?: {
-    id?: string;
-    name: string;
-    included: boolean;
-    value?: string;
-  }[];
+
+  // One-time purchase
+  isOneTime?: boolean;
+  oneTimePrice?: number | null;
+
+  // Free trial
+  freeTrialEnabled?: boolean;
+  freeTrialDays?: number | null;
+
+  // Discount
+  discountPercent?: number | null;
+  discountLabel?: string | null;
+
+  // Pricing for each billing cycle (replaces all pricing)
+  pricing?: PlanPricingInput[];
+
+  // Features (replaces all features)
+  features?: PlanFeatureInput[];
 }
+
+// ── Bundle Types ─────────────────────────────────────────
+
+export interface CreateBundleInput {
+  name: string;
+  slug: string;
+  description?: string;
+  price: number; // in paise
+  currency?: string;
+  planIds: string[]; // IDs of plans to include
+}
+
+export interface UpdateBundleInput {
+  name?: string;
+  description?: string;
+  price?: number;
+  isActive?: boolean;
+  planIds?: string[]; // Replace plan list
+}
+
+// ── Campaign Types ───────────────────────────────────────
 
 export interface CreateCampaignInput {
   name: string;
@@ -124,4 +209,18 @@ export interface CreateCampaignInput {
     roles?: string[];
     isActive?: boolean;
   };
+}
+
+// ── Review Types ─────────────────────────────────────────
+
+export interface CreateReviewInput {
+  rating: number; // 1 to 5
+  comment?: string;
+  planId: string;
+}
+
+export interface UpdateReviewInput {
+  rating?: number;
+  comment?: string;
+  status?: ReviewStatusEnum;
 }

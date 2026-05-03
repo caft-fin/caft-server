@@ -2,13 +2,16 @@
 CREATE TYPE "Role" AS ENUM ('USER', 'ADMIN');
 
 -- CreateEnum
+CREATE TYPE "PlanType" AS ENUM ('FREE', 'PAID');
+
+-- CreateEnum
 CREATE TYPE "SubscriptionStatus" AS ENUM ('CREATED', 'AUTHENTICATED', 'ACTIVE', 'PENDING', 'HALTED', 'CANCELLED', 'COMPLETED', 'EXPIRED');
 
 -- CreateEnum
 CREATE TYPE "PaymentStatus" AS ENUM ('CREATED', 'AUTHORIZED', 'CAPTURED', 'REFUNDED', 'FAILED');
 
 -- CreateEnum
-CREATE TYPE "BillingCycle" AS ENUM ('MONTHLY', 'YEARLY');
+CREATE TYPE "BillingCycle" AS ENUM ('DAILY', 'WEEKLY', 'BIWEEKLY', 'MONTHLY', 'QUARTERLY', 'HALFYEARLY', 'ANNUALLY', 'ONETIME');
 
 -- CreateEnum
 CREATE TYPE "CampaignStatus" AS ENUM ('DRAFT', 'SCHEDULED', 'SENDING', 'PAUSED', 'COMPLETED', 'FAILED');
@@ -73,15 +76,18 @@ CREATE TABLE "plans" (
     "name" TEXT NOT NULL,
     "slug" TEXT NOT NULL,
     "description" TEXT NOT NULL,
-    "priceMonthly" INTEGER NOT NULL,
-    "priceYearly" INTEGER NOT NULL,
+    "planType" "PlanType" NOT NULL DEFAULT 'PAID',
     "currency" TEXT NOT NULL DEFAULT 'INR',
-    "razorpayPlanIdMonthly" TEXT,
-    "razorpayPlanIdYearly" TEXT,
+    "bannerBadge" TEXT,
     "isPopular" BOOLEAN NOT NULL DEFAULT false,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "sortOrder" INTEGER NOT NULL DEFAULT 0,
-    "trialPeriodDays" INTEGER,
+    "isOneTime" BOOLEAN NOT NULL DEFAULT false,
+    "oneTimePrice" INTEGER,
+    "freeTrialEnabled" BOOLEAN NOT NULL DEFAULT false,
+    "freeTrialDays" INTEGER,
+    "discountPercent" DOUBLE PRECISION,
+    "discountLabel" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -95,8 +101,48 @@ CREATE TABLE "plan_features" (
     "name" TEXT NOT NULL,
     "included" BOOLEAN NOT NULL DEFAULT true,
     "value" TEXT,
+    "icon" TEXT,
+    "sortOrder" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "plan_features_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "plan_pricing" (
+    "id" TEXT NOT NULL,
+    "planId" TEXT NOT NULL,
+    "billingCycle" "BillingCycle" NOT NULL,
+    "price" INTEGER NOT NULL,
+    "razorpayPlanId" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "plan_pricing_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "plan_bundles" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "slug" TEXT NOT NULL,
+    "description" TEXT,
+    "price" INTEGER NOT NULL,
+    "currency" TEXT NOT NULL DEFAULT 'INR',
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "plan_bundles_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "bundle_plans" (
+    "id" TEXT NOT NULL,
+    "bundleId" TEXT NOT NULL,
+    "planId" TEXT NOT NULL,
+
+    CONSTRAINT "bundle_plans_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -112,6 +158,10 @@ CREATE TABLE "subscriptions" (
     "currentPeriodEnd" TIMESTAMP(3),
     "cancelledAt" TIMESTAMP(3),
     "cancelReason" TEXT,
+    "isOneTime" BOOLEAN NOT NULL DEFAULT false,
+    "bundleId" TEXT,
+    "discountApplied" DOUBLE PRECISION,
+    "trialEndsAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -310,7 +360,31 @@ CREATE INDEX "plans_isActive_idx" ON "plans"("isActive");
 CREATE INDEX "plans_slug_idx" ON "plans"("slug");
 
 -- CreateIndex
+CREATE INDEX "plans_planType_idx" ON "plans"("planType");
+
+-- CreateIndex
 CREATE INDEX "plan_features_planId_idx" ON "plan_features"("planId");
+
+-- CreateIndex
+CREATE INDEX "plan_pricing_planId_idx" ON "plan_pricing"("planId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "plan_pricing_planId_billingCycle_key" ON "plan_pricing"("planId", "billingCycle");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "plan_bundles_slug_key" ON "plan_bundles"("slug");
+
+-- CreateIndex
+CREATE INDEX "plan_bundles_isActive_idx" ON "plan_bundles"("isActive");
+
+-- CreateIndex
+CREATE INDEX "bundle_plans_bundleId_idx" ON "bundle_plans"("bundleId");
+
+-- CreateIndex
+CREATE INDEX "bundle_plans_planId_idx" ON "bundle_plans"("planId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "bundle_plans_bundleId_planId_key" ON "bundle_plans"("bundleId", "planId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "subscriptions_razorpaySubscriptionId_key" ON "subscriptions"("razorpaySubscriptionId");
@@ -326,6 +400,9 @@ CREATE INDEX "subscriptions_status_idx" ON "subscriptions"("status");
 
 -- CreateIndex
 CREATE INDEX "subscriptions_razorpaySubscriptionId_idx" ON "subscriptions"("razorpaySubscriptionId");
+
+-- CreateIndex
+CREATE INDEX "subscriptions_bundleId_idx" ON "subscriptions"("bundleId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "payments_razorpayPaymentId_key" ON "payments"("razorpayPaymentId");
@@ -391,10 +468,22 @@ ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_userId_fkey" FOREIGN
 ALTER TABLE "plan_features" ADD CONSTRAINT "plan_features_planId_fkey" FOREIGN KEY ("planId") REFERENCES "plans"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
+ALTER TABLE "plan_pricing" ADD CONSTRAINT "plan_pricing_planId_fkey" FOREIGN KEY ("planId") REFERENCES "plans"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "bundle_plans" ADD CONSTRAINT "bundle_plans_bundleId_fkey" FOREIGN KEY ("bundleId") REFERENCES "plan_bundles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "bundle_plans" ADD CONSTRAINT "bundle_plans_planId_fkey" FOREIGN KEY ("planId") REFERENCES "plans"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_planId_fkey" FOREIGN KEY ("planId") REFERENCES "plans"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_bundleId_fkey" FOREIGN KEY ("bundleId") REFERENCES "plan_bundles"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "payments" ADD CONSTRAINT "payments_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

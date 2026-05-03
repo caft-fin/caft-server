@@ -59,8 +59,7 @@ async function main() {
       name: 'Basic',
       slug: 'basic',
       description: 'Perfect for individuals starting their financial tracking journey.',
-      priceMonthly: 0,    // Free
-      priceYearly: 0,
+      planType: 'FREE',
       isPopular: false,
       sortOrder: 1,
       features: {
@@ -77,7 +76,7 @@ async function main() {
       },
     },
   });
-  console.log(`✅ Plan: ${basicPlan.name} (₹${basicPlan.priceMonthly / 100}/mo)`);
+  console.log(`✅ Plan: ${basicPlan.name} (Free)`);
 
   // Pro Plan
   const proPlan = await prisma.plan.upsert({
@@ -87,8 +86,7 @@ async function main() {
       name: 'Pro',
       slug: 'pro',
       description: 'Advanced tools for serious investors and family wealth growth.',
-      priceMonthly: 99900,   // ₹999 in paise
-      priceYearly: 959900,   // ₹9,599 in paise (20% discount)
+      planType: 'PAID',
       isPopular: true,
       sortOrder: 2,
       features: {
@@ -103,9 +101,15 @@ async function main() {
           { name: 'Custom Dashboards', included: true, value: 'Limited' },
         ],
       },
+      pricing: {
+        create: [
+          { billingCycle: 'MONTHLY', price: 99900 },
+          { billingCycle: 'ANNUALLY', price: 959900 },
+        ],
+      },
     },
   });
-  console.log(`✅ Plan: ${proPlan.name} (₹${proPlan.priceMonthly / 100}/mo)`);
+  console.log(`✅ Plan: ${proPlan.name}`);
 
   // Institutional Plan
   const instPlan = await prisma.plan.upsert({
@@ -115,8 +119,7 @@ async function main() {
       name: 'Institutional',
       slug: 'institutional',
       description: 'Comprehensive suite for wealth managers and large organizations.',
-      priceMonthly: 499900,   // ₹4,999 in paise
-      priceYearly: 4799900,   // ₹47,999 in paise (20% discount)
+      planType: 'PAID',
       isPopular: false,
       sortOrder: 3,
       features: {
@@ -131,9 +134,15 @@ async function main() {
           { name: 'Custom Dashboards', included: true, value: 'Full Access' },
         ],
       },
+      pricing: {
+        create: [
+          { billingCycle: 'MONTHLY', price: 499900 },
+          { billingCycle: 'ANNUALLY', price: 4799900 },
+        ],
+      },
     },
   });
-  console.log(`✅ Plan: ${instPlan.name} (₹${instPlan.priceMonthly / 100}/mo)`);
+  console.log(`✅ Plan: ${instPlan.name}`);
 
   // ── 4. Create Notification Preferences ──────────────
 

@@ -23,6 +23,9 @@ import subscriptionRoutes from './routes/subscription.routes';
 import paymentRoutes from './routes/payment.routes';
 import adminRoutes from './routes/admin.routes';
 import emailRoutes from './routes/email.routes';
+import analyticsRoutes from './routes/analytics.routes';
+import reviewRoutes from './routes/review.routes';
+import uploadRoutes from './routes/upload.routes';
 
 const app = express();
 
@@ -61,6 +64,13 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/emails', emailRoutes);
+app.use('/api/admin/analytics', analyticsRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/upload', uploadRoutes);
+
+// ── Public Settings (no auth required) ───────────────────
+import { AdminController } from './controllers/admin.controller';
+app.get('/api/settings/public', AdminController.getPublicSettings);
 
 // ── Backward-compatible routes for frontend mocks ────────
 // These match the existing frontend fetch URLs
@@ -69,19 +79,35 @@ app.get('/api/pricing', async (_req, res, next) => {
   try {
     const plans = await prisma.plan.findMany({
       where: { isActive: true },
-      include: { features: true },
+      include: {
+        features: { orderBy: { sortOrder: 'asc' } },
+        pricing: { where: { isActive: true }, orderBy: { billingCycle: 'asc' } },
+      },
       orderBy: { sortOrder: 'asc' },
     });
 
     // Transform to match frontend PricingPlan interface
-    const formatted = plans.map((p) => ({
-      id: p.slug,
-      name: p.name,
-      price: p.priceMonthly / 100, // Convert paise to rupees
-      description: p.description,
-      features: p.features.map((f) => ({ name: f.name, included: f.included })),
-      isPopular: p.isPopular,
-    }));
+    const formatted = plans.map((p) => {
+      const monthlyPricing = p.pricing.find(pr => pr.billingCycle === 'MONTHLY');
+      return {
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+        price: monthlyPricing ? monthlyPricing.price / 100 : 0,
+        description: p.description,
+        planType: p.planType,
+        bannerBadge: p.bannerBadge,
+        isOneTime: p.isOneTime,
+        oneTimePrice: p.oneTimePrice ? p.oneTimePrice / 100 : null,
+        freeTrialEnabled: p.freeTrialEnabled,
+        freeTrialDays: p.freeTrialDays,
+        discountPercent: p.discountPercent,
+        discountLabel: p.discountLabel,
+        features: p.features.map((f) => ({ name: f.name, included: f.included, icon: f.icon })),
+        pricing: p.pricing.map((pr) => ({ billingCycle: pr.billingCycle, price: pr.price / 100 })),
+        isPopular: p.isPopular,
+      };
+    });
 
     res.json(formatted);
   } catch (error) { next(error); }

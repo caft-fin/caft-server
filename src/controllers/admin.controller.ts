@@ -241,13 +241,40 @@ export class AdminController {
     } catch (error) { next(error); }
   }
 
+  /** GET /api/settings/public — Public-safe settings (no auth) */
+  static readonly PUBLIC_KEY_PREFIXES = ['page_'];
+  static readonly PUBLIC_KEYS = [
+    'heroMediaType', 'heroImageUrl', 'heroVideoUrl',
+    'logoType', 'logoSvgUrl',
+    'bannerCompanies', 'bannerColorMode', 'bannerDefaultColor',
+    'bannerTextSize', 'bannerFontFamily',
+    'appName',
+  ];
+
+  static async getPublicSettings(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const settings = await prisma.adminSetting.findMany();
+      const filtered = settings.filter(s =>
+        AdminController.PUBLIC_KEYS.includes(s.key) ||
+        AdminController.PUBLIC_KEY_PREFIXES.some(p => s.key.startsWith(p))
+      );
+      const settingsMap = filtered.reduce((acc, s) => ({ ...acc, [s.key]: s.value }), {} as Record<string, string>);
+      ApiResponse.success(res, settingsMap);
+    } catch (error) { next(error); }
+  }
+
   /** PUT /api/admin/settings */
   static async updateSettings(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
+      // Extract page_* keys before schema validation (they're dynamic)
+      const pageEntries = Object.entries(req.body)
+        .filter(([k]) => k.startsWith('page_'))
+        .map(([k, v]) => [k, String(v)] as [string, string]);
+
       const data = updateSettingsSchema.parse(req.body);
       const entries = Object.entries(data).filter(([_, v]) => v !== undefined);
 
-      for (const [key, value] of entries) {
+      for (const [key, value] of [...entries, ...pageEntries]) {
         await prisma.adminSetting.upsert({
           where: { key },
           create: { key, value: String(value) },
@@ -256,7 +283,7 @@ export class AdminController {
       }
 
       await prisma.auditLog.create({
-        data: { userId: req.user?.userId, action: 'UPDATE_SETTINGS', entity: 'AdminSetting', details: JSON.stringify(data) },
+        data: { userId: req.user?.userId, action: 'UPDATE_SETTINGS', entity: 'AdminSetting', details: JSON.stringify({ ...data, ...Object.fromEntries(pageEntries) }) },
       });
 
       ApiResponse.success(res, data, 'Settings updated');
@@ -272,6 +299,9 @@ export class AdminController {
     RefreshToken: 'refresh_tokens',
     Plan: 'plans',
     PlanFeature: 'plan_features',
+    PlanPricing: 'plan_pricing',
+    PlanBundle: 'plan_bundles',
+    BundlePlan: 'bundle_plans',
     Subscription: 'subscriptions',
     Payment: 'payments',
     Transaction: 'transactions',
@@ -286,9 +316,10 @@ export class AdminController {
 
   /** Models that have a createdAt column for ordering */
   private static readonly HAS_CREATED_AT = new Set([
-    'User', 'OtpToken', 'RefreshToken', 'Plan', 'Subscription', 'Payment',
-    'Transaction', 'LinkedAccount', 'EmailCampaign', 'EmailTemplate',
-    'NotificationPreference', 'AdminSetting', 'AuditLog',
+    'User', 'OtpToken', 'RefreshToken', 'Plan', 'PlanPricing', 'PlanBundle',
+    'Subscription', 'Payment', 'Transaction', 'LinkedAccount',
+    'EmailCampaign', 'EmailTemplate', 'NotificationPreference',
+    'AdminSetting', 'AuditLog',
   ]);
 
   /** Helper to get a Prisma delegate by model name */
@@ -299,6 +330,9 @@ export class AdminController {
       RefreshToken: prisma.refreshToken,
       Plan: prisma.plan,
       PlanFeature: prisma.planFeature,
+      PlanPricing: prisma.planPricing,
+      PlanBundle: prisma.planBundle,
+      BundlePlan: prisma.bundlePlan,
       Subscription: prisma.subscription,
       Payment: prisma.payment,
       Transaction: prisma.transaction,
