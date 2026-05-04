@@ -11,9 +11,14 @@ import crypto from 'crypto';
 const bucketName = 'caft-financial-assets-dev-12345';
 const region = env.AWS_REGION || 'us-east-1';
 
-// We initialize the client without credentials if running on AWS with IAM roles
-// or if we rely on ~/.aws/credentials (local CLI setup).
-const s3Client = new S3Client({ region });
+// We initialize the client with explicit credentials from env
+const s3Client = new S3Client({ 
+  region,
+  credentials: {
+    accessKeyId: env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 
 export class S3Service {
   /**

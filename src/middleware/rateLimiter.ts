@@ -52,13 +52,13 @@ export function rateLimiter(options: RateLimitOptions) {
 // Pre-configured limiters
 export const authLimiter = rateLimiter({
   windowMs: 60 * 1000,   // 1 minute
-  maxRequests: 5,
+  maxRequests: 20,
   keyPrefix: 'ratelimit:auth',
 });
 
 export const apiLimiter = rateLimiter({
   windowMs: 60 * 1000,   // 1 minute
-  maxRequests: 60,
+  maxRequests: 100,
   keyPrefix: 'ratelimit:api',
 });
 

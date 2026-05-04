@@ -61,8 +61,10 @@ export class AuthService {
     console.log(`   Expires at: ${expiresAt.toLocaleTimeString()}`);
     console.log(`🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
-    // Also try to send via email (will silently fail if SES not configured)
-    await EmailService.sendOtpEmail(email, otp, user.name);
+    // Send via email in background (don't block the response)
+    EmailService.sendOtpEmail(email, otp, user.name).catch(err => {
+      console.error(`❌ Background email sending failed for ${email}:`, err.message);
+    });
 
     return { message: `OTP sent to ${email}` };
   }

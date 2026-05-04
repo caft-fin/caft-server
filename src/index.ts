@@ -9,6 +9,14 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
 
+// ── Global Error Handling ────────────────────────────────
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+});
+
 import { env } from './config/env';
 import { connectRedis, disconnectRedis } from './config/redis';
 import { prisma } from './config/database';
@@ -33,7 +41,7 @@ const app = express();
 
 app.use(helmet());
 app.use(cors({
-  origin: env.CORS_ORIGIN,
+  origin: [env.CORS_ORIGIN, 'http://127.0.0.1:3000', 'http://0.0.0.0:3000'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

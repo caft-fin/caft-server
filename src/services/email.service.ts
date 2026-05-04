@@ -36,7 +36,14 @@ async function sendEmail(to: string, subject: string, htmlBody: string): Promise
     }));
     console.log(`📧 Email sent to ${to}: ${subject}`);
   } catch (error) {
-    console.error(`❌ Failed to send email to ${to}:`, (error as Error).message);
+    const err = error as Error;
+    console.error(`❌ Failed to send email to ${to}:`, err.message);
+    
+    if (err.message.includes('not verified') || err.message.includes('Sandbox')) {
+      console.warn('⚠️  SES AUTHENTICATION ISSUE: This account is in SES Sandbox mode.');
+      console.warn(`   Make sure both "${env.SES_FROM_EMAIL}" and "${to}" are verified in the AWS Console (Region: ${env.AWS_REGION}).`);
+      console.warn('   To send to any email, request Production Access in the AWS SES dashboard.');
+    }
     // Don't throw - email failures shouldn't break the flow
   }
 }
