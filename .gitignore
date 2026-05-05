@@ -5,3 +5,4 @@ dist/
 admin-access_accessKeys*
 deploy/
 ec2-userdata.sh
+client_secret_*.json

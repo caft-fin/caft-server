@@ -10,16 +10,20 @@ import crypto from 'crypto';
 
 /**
  * Maps our BillingCycle enum to Razorpay's period + interval.
- * Razorpay supports: daily, weekly, monthly, yearly
- * We use interval multipliers for bi-weekly, quarterly, half-yearly.
+ * 
+ * Per Razorpay docs (https://razorpay.com/docs/api/payments/subscriptions/create-plan/):
+ *   period: daily | weekly | monthly | quarterly | yearly
+ *   interval: combined with period defines frequency (min 7 for daily)
+ *
+ * We use interval multipliers for custom frequencies.
  */
 function mapBillingCycleToRazorpay(cycle: BillingCycleType): { period: string; interval: number } {
   switch (cycle) {
-    case 'DAILY':      return { period: 'daily', interval: 1 };
+    case 'DAILY':      return { period: 'daily', interval: 7 };    // Min daily interval is 7
     case 'WEEKLY':     return { period: 'weekly', interval: 1 };
-    case 'BIWEEKLY':   return { period: 'daily', interval: 15 };
+    case 'BIWEEKLY':   return { period: 'weekly', interval: 2 };   // Every 2 weeks
     case 'MONTHLY':    return { period: 'monthly', interval: 1 };
-    case 'QUARTERLY':  return { period: 'monthly', interval: 3 };
+    case 'QUARTERLY':  return { period: 'quarterly', interval: 1 }; // Use native quarterly
     case 'HALFYEARLY': return { period: 'monthly', interval: 6 };
     case 'ANNUALLY':   return { period: 'yearly', interval: 1 };
     case 'ONETIME':    throw new Error('ONETIME plans do not use Razorpay plans — use orders instead');
@@ -33,9 +37,9 @@ function mapBillingCycleToRazorpay(cycle: BillingCycleType): { period: string; i
  */
 function getDefaultTotalCount(cycle: BillingCycleType): number {
   switch (cycle) {
-    case 'DAILY':      return 365;  // 1 year of daily billing
+    case 'DAILY':      return 52;   // ~1 year (52 x 7-day intervals)
     case 'WEEKLY':     return 52;   // 1 year of weekly billing
-    case 'BIWEEKLY':   return 24;   // 1 year of bi-weekly billing
+    case 'BIWEEKLY':   return 26;   // 1 year of bi-weekly billing
     case 'MONTHLY':    return 12;   // 1 year of monthly billing
     case 'QUARTERLY':  return 4;    // 1 year of quarterly billing
     case 'HALFYEARLY': return 2;    // 1 year of half-yearly billing
@@ -46,7 +50,11 @@ function getDefaultTotalCount(cycle: BillingCycleType): number {
 
 export class RazorpayService {
   /**
-   * Create a Razorpay plan (plans are immutable in Razorpay)
+   * Create a Razorpay plan (plans are immutable in Razorpay).
+   *
+   * Razorpay API: POST /v1/plans
+   * Required: period, interval, item.name, item.amount, item.currency
+   * Amount must be in smallest currency unit (paise for INR, min 100 = ₹1)
    */
   static async createPlan(params: {
     name: string;
@@ -59,9 +67,20 @@ export class RazorpayService {
       throw new AppError('One-time plans do not use Razorpay plans', 400);
     }
 
+    // Razorpay requires amount >= 100 paise (₹1)
+    if (params.amount < 100) {
+      throw new AppError('Plan amount must be at least ₹1 (100 paise)', 400);
+    }
+
+    const { period, interval } = mapBillingCycleToRazorpay(params.billingCycle);
+
+    console.log(`\n📋 Creating Razorpay plan: "${params.name}"`);
+    console.log(`   Period: ${period}, Interval: ${interval}`);
+    console.log(`   Amount: ${params.amount} paise (₹${params.amount / 100})`);
+    console.log(`   Currency: ${params.currency}\n`);
+
     try {
       const razorpay = getRazorpayClient();
-      const { period, interval } = mapBillingCycleToRazorpay(params.billingCycle);
 
       const plan = await razorpay.plans.create({
         period: period as any,
@@ -73,15 +92,24 @@ export class RazorpayService {
           description: params.description || params.name,
         },
       });
-      return (plan as any).id;
+
+      const planId = (plan as any).id;
+      console.log(`✅ Razorpay plan created: ${planId}\n`);
+      return planId;
     } catch (error: any) {
-      console.error('Razorpay plan creation failed:', error?.error?.description || error.message);
-      throw new AppError(`Failed to create Razorpay plan: ${error?.error?.description || error.message}`, 502);
+      const errorMsg = error?.error?.description || error?.message || 'Unknown Razorpay error';
+      console.error(`\n❌ Razorpay plan creation FAILED for "${params.name}":`);
+      console.error(`   Error: ${errorMsg}`);
+      console.error(`   Full error:`, JSON.stringify(error?.error || error, null, 2), '\n');
+      throw new AppError(`Failed to create Razorpay plan: ${errorMsg}`, 502);
     }
   }
 
   /**
-   * Create a Razorpay subscription for a user (recurring billing)
+   * Create a Razorpay subscription for a user (recurring billing).
+   *
+   * Razorpay API: POST /v1/subscriptions
+   * Required: plan_id, total_count
    */
   static async createSubscription(params: {
     planId: string;       // Razorpay plan ID
@@ -91,15 +119,22 @@ export class RazorpayService {
     customerPhone?: string;
     trialDays?: number;
   }) {
+    const totalCount = getDefaultTotalCount(params.billingCycle);
+
+    console.log(`\n📋 Creating Razorpay subscription:`);
+    console.log(`   Plan ID: ${params.planId}`);
+    console.log(`   Billing: ${params.billingCycle}, Total cycles: ${totalCount}`);
+    console.log(`   Customer: ${params.customerEmail}`);
+    if (params.trialDays) console.log(`   Trial: ${params.trialDays} days`);
+
     try {
       const razorpay = getRazorpayClient();
-      const totalCount = getDefaultTotalCount(params.billingCycle);
 
       const subscriptionData: any = {
         plan_id: params.planId,
         total_count: totalCount,
         quantity: 1,
-        customer_notify: 1,
+        customer_notify: true,
         notes: {
           customer_email: params.customerEmail,
           customer_name: params.customerName,
@@ -114,14 +149,21 @@ export class RazorpayService {
       }
 
       const subscription = await razorpay.subscriptions.create(subscriptionData);
+
+      console.log(`✅ Razorpay subscription created: ${subscription.id}`);
+      console.log(`   Short URL: ${subscription.short_url}\n`);
+
       return {
         subscriptionId: subscription.id,
         shortUrl: subscription.short_url,
         status: subscription.status,
       };
     } catch (error: any) {
-      console.error('Razorpay subscription creation failed:', error?.error?.description || error.message);
-      throw new AppError(`Failed to create subscription: ${error?.error?.description || error.message}`, 502);
+      const errorMsg = error?.error?.description || error?.message || 'Unknown Razorpay error';
+      console.error(`\n❌ Razorpay subscription creation FAILED:`);
+      console.error(`   Error: ${errorMsg}`);
+      console.error(`   Full error:`, JSON.stringify(error?.error || error, null, 2), '\n');
+      throw new AppError(`Failed to create subscription: ${errorMsg}`, 502);
     }
   }
 

@@ -114,6 +114,26 @@ export class PlanController {
     } catch (error) { next(error); }
   }
 
+  /** POST /api/plans/admin/sync-razorpay — Admin: sync unsynced pricing to Razorpay */
+  static async syncRazorpayPlans(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { planId } = req.body || {};
+      const result = await PlanService.syncRazorpayPlans(planId);
+
+      await prisma.auditLog.create({
+        data: {
+          userId: req.user?.userId,
+          action: 'SYNC_RAZORPAY',
+          entity: 'Plan',
+          entityId: planId || 'all',
+          details: JSON.stringify(result),
+        },
+      });
+
+      ApiResponse.success(res, result, `Synced ${result.synced} plans with Razorpay`);
+    } catch (error) { next(error); }
+  }
+
   /** POST /api/plans/admin/bulk-discount — Admin: apply discount to multiple plans */
   static async bulkApplyDiscount(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {

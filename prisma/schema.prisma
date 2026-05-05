@@ -101,7 +101,16 @@ model User {
   biometricEnabled Boolean @default(false)
   isSuperAdmin     Boolean @default(false) // Only true for seed-created admin
   referralCode     String? @unique
+  googleId         String? @unique // Google OAuth subject ID
   referredById     String?
+
+  // Location & visit tracking (populated on login)
+  lastIpAddress    String?
+  lastCity         String?
+  lastState        String?
+  lastPincode      String?
+  lastCountry      String?
+  totalVisits      Int     @default(0)
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt

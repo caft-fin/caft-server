@@ -134,7 +134,14 @@ export class AuthService {
       await prisma.otpToken.update({ where: { id: otpToken.id }, data: { usedAt: new Date() } });
     }
     const wasFirstLogin = !user.isEmailVerified;
-    await prisma.user.update({ where: { id: user.id }, data: { isEmailVerified: true, lastLoginAt: new Date() } });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailVerified: true,
+        lastLoginAt: new Date(),
+        totalVisits: { increment: 1 },
+      },
+    });
 
     const tokens = AuthService.generateTokens(user);
     await prisma.refreshToken.create({ data: { userId: user.id, token: tokens.refreshToken, expiresAt: addDays(new Date(), 7) } });
@@ -143,8 +150,9 @@ export class AuthService {
 
     return {
       user: {
-        id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl,
-        role: user.role, isSuperAdmin: user.isSuperAdmin,
+        id: user.id, email: user.email, name: user.name, phone: user.phone,
+        avatarUrl: user.avatarUrl, role: user.role, isSuperAdmin: user.isSuperAdmin,
+        googleId: user.googleId, verifiedBy: user.googleId ? 'Google' : 'OTP',
         membershipLevel: user.kycVerified ? 'Premium Solaris' : 'Basic',
       },
       ...tokens,
@@ -202,7 +210,7 @@ export class AuthService {
   /**
    * Generate access and refresh token pair
    */
-  private static generateTokens(user: { id: string; email: string; role: string; isSuperAdmin: boolean }) {
+  static generateTokens(user: { id: string; email: string; role: string; isSuperAdmin: boolean }) {
     const payload: JwtPayload = {
       userId: user.id, email: user.email,
       role: user.role as 'USER' | 'ADMIN',

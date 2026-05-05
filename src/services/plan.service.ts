@@ -107,6 +107,7 @@ export class PlanService {
       for (const p of input.pricing) {
         let razorpayPlanId: string | null = null;
 
+        // Create Razorpay plan for recurring billing cycles
         if (p.price > 0 && p.billingCycle !== 'ONETIME') {
           try {
             razorpayPlanId = await RazorpayService.createPlan({
@@ -116,9 +117,10 @@ export class PlanService {
               billingCycle: p.billingCycle,
               description: input.description,
             });
-          } catch (error) {
-            console.error(`Failed to create Razorpay plan for ${p.billingCycle}:`, error);
-            // Continue without Razorpay — plan can be synced later
+          } catch (error: any) {
+            console.error(`⚠️ Razorpay plan creation failed for ${p.billingCycle}:`, error?.message || error);
+            console.error(`   Plan will be saved without Razorpay sync. Use syncRazorpayPlans() to retry later.`);
+            // Don't throw — save the plan anyway, admin can sync later
           }
         }
 
@@ -139,6 +141,66 @@ export class PlanService {
     // Return full plan with pricing
     return PlanService.getPlanById(plan.id);
   }
+
+  /**
+   * Sync Razorpay plans for pricing records that have null razorpayPlanId.
+   * This is a recovery mechanism for plans that were created while Razorpay was unavailable.
+   */
+  static async syncRazorpayPlans(planId?: string) {
+    const where: any = { razorpayPlanId: null, isActive: true };
+    if (planId) where.planId = planId;
+
+    const unsynced = await prisma.planPricing.findMany({
+      where,
+      include: { plan: true },
+    });
+
+    // Filter out ONETIME and FREE plans
+    const toSync = unsynced.filter(p => 
+      p.billingCycle !== 'ONETIME' && 
+      p.plan.planType === 'PAID' && 
+      p.price > 0
+    );
+
+    if (toSync.length === 0) {
+      return { synced: 0, failed: 0, message: 'All pricing records already have Razorpay plans' };
+    }
+
+    let synced = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const pricing of toSync) {
+      try {
+        const razorpayPlanId = await RazorpayService.createPlan({
+          name: `${pricing.plan.name} - ${formatBillingCycle(pricing.billingCycle as BillingCycleType)}`,
+          amount: pricing.price,
+          currency: pricing.plan.currency,
+          billingCycle: pricing.billingCycle as BillingCycleType,
+          description: pricing.plan.description,
+        });
+
+        await prisma.planPricing.update({
+          where: { id: pricing.id },
+          data: { razorpayPlanId },
+        });
+
+        synced++;
+        console.log(`✅ Synced: ${pricing.plan.name} (${pricing.billingCycle}) → ${razorpayPlanId}`);
+      } catch (error: any) {
+        failed++;
+        const msg = `${pricing.plan.name} (${pricing.billingCycle}): ${error?.message || 'Unknown error'}`;
+        errors.push(msg);
+        console.error(`❌ Failed to sync: ${msg}`);
+      }
+    }
+
+    // Invalidate cache after sync
+    await CacheService.del(CACHE_KEYS.ACTIVE_PLANS);
+
+    return { synced, failed, total: toSync.length, errors };
+  }
+
 
   /**
    * Update an existing plan

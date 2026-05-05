@@ -46,4 +46,12 @@ export class AnalyticsController {
       ApiResponse.success(res, data);
     } catch (error) { next(error); }
   }
+
+  /** GET /api/admin/analytics/payment-issues — Failed payments & abandoned carts with user details */
+  static async getPaymentIssues(_req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await AnalyticsService.getPaymentIssues();
+      ApiResponse.success(res, data);
+    } catch (error) { next(error); }
+  }
 }

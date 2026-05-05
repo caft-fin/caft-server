@@ -25,6 +25,9 @@ router.delete('/admin/:id', authenticate, adminGuard, PlanController.deletePlan)
 router.post('/admin/bulk-discount', authenticate, adminGuard, PlanController.bulkApplyDiscount);
 router.delete('/admin/bulk-discount', authenticate, adminGuard, PlanController.bulkRemoveDiscount);
 
+// Admin — Sync Razorpay plans (retry failed syncs)
+router.post('/admin/sync-razorpay', authenticate, adminGuard, PlanController.syncRazorpayPlans);
+
 // Admin — Bundles
 router.get('/admin/bundles', authenticate, adminGuard, PlanController.getAllBundles);
 router.post('/admin/bundles', authenticate, adminGuard, PlanController.createBundle);

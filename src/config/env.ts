@@ -35,6 +35,11 @@ const envSchema = z.object({
   TEST_ACCOUNT_ENABLED: z.string().default('true'),
   TEST_ACCOUNT_EMAIL: z.string().default('cafttest@gmail.com'),
   TEST_ACCOUNT_OTP: z.string().default('852085'),
+
+  // Google OAuth (optional — login button shows but won't work without these)
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_CALLBACK_URL: z.string().default('http://localhost:5000/api/auth/google/callback'),
 });
 
 function loadEnv() {

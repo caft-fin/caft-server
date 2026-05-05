@@ -16,5 +16,6 @@ router.get('/revenue', AnalyticsController.getRevenueAnalytics);
 router.get('/churn', AnalyticsController.getChurnAnalytics);
 router.get('/growth', AnalyticsController.getGrowthAnalytics);
 router.get('/rates', AnalyticsController.getSubscriptionRates);
+router.get('/payment-issues', AnalyticsController.getPaymentIssues);
 
 export default router;

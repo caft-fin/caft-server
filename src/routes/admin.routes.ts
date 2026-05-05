@@ -14,6 +14,7 @@ router.use(authenticate, adminGuard);
 
 // User management
 router.get('/users', AdminController.getUsers);
+router.get('/users/:id/details', AdminController.getUserDetails);  // Full user detail panel
 router.post('/users', AdminController.createUser);            // Create user account
 router.put('/users/:id', AdminController.updateUser);
 router.delete('/users/:id', AdminController.deleteUser);

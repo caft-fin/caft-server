@@ -309,6 +309,72 @@ export class AnalyticsService {
 
     return rates;
   }
+
+  /**
+   * Get detailed payment issues — failed payments & abandoned subscriptions with user info.
+   * This enables admins to proactively reach out to users experiencing payment problems.
+   */
+  static async getPaymentIssues() {
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    // Failed payments with user and subscription details
+    const failedPayments = await prisma.payment.findMany({
+      where: { status: 'FAILED' },
+      include: {
+        user: { select: { id: true, name: true, email: true, phone: true } },
+        subscription: {
+          include: { plan: { select: { id: true, name: true } } },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    // Abandoned subscriptions (CREATED status older than 24 hours — user started but never paid)
+    const abandonedSubscriptions = await prisma.subscription.findMany({
+      where: {
+        status: 'CREATED',
+        createdAt: { lt: twentyFourHoursAgo },
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, phone: true } },
+        plan: { select: { id: true, name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return {
+      failedPayments: failedPayments.map(p => ({
+        id: p.id,
+        userId: p.user.id,
+        userName: p.user.name,
+        userEmail: p.user.email,
+        userPhone: p.user.phone,
+        amount: p.amount,
+        currency: p.currency,
+        method: p.method,
+        failureReason: p.failureReason,
+        planName: p.subscription?.plan?.name || 'N/A',
+        createdAt: p.createdAt,
+      })),
+      abandonedSubscriptions: abandonedSubscriptions.map(s => ({
+        id: s.id,
+        userId: s.user.id,
+        userName: s.user.name,
+        userEmail: s.user.email,
+        userPhone: s.user.phone,
+        planName: s.plan.name,
+        billingCycle: s.billingCycle,
+        createdAt: s.createdAt,
+      })),
+      summary: {
+        totalFailedPayments: failedPayments.length,
+        totalAbandoned: abandonedSubscriptions.length,
+      },
+    };
+  }
 }
 
 // ── Helpers ──────────────────────────────────────────────

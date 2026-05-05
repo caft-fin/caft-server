@@ -54,6 +54,55 @@ export class AdminController {
     } catch (error) { next(error); }
   }
 
+  /** GET /api/admin/users/:id/details — Full user detail for admin panel */
+  static async getUserDetails(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params as { id: string };
+
+      const user = await prisma.user.findUnique({
+        where: { id },
+        include: {
+          subscriptions: {
+            include: { plan: { select: { name: true, slug: true } } },
+            orderBy: { createdAt: 'desc' },
+          },
+          payments: {
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true, amount: true, currency: true, status: true, method: true,
+              description: true, failureReason: true, razorpayPaymentId: true,
+              createdAt: true,
+              subscription: { select: { plan: { select: { name: true } } } },
+            },
+          },
+          linkedAccounts: true,
+          _count: { select: { referrals: true, reviews: true, transactions: true } },
+        },
+      });
+
+      if (!user) throw new AppError('User not found', 404);
+
+      // Calculate total revenue from this user
+      const totalRevenue = user.payments
+        .filter((p: any) => p.status === 'CAPTURED' || p.status === 'AUTHORIZED')
+        .reduce((sum: number, p: any) => sum + p.amount, 0);
+
+      // Find active subscription
+      const activeSubscription = user.subscriptions.find((s: any) => s.status === 'ACTIVE');
+
+      // Strip sensitive fields
+      const { passwordHash, ...safeUser } = user;
+
+      ApiResponse.success(res, {
+        ...safeUser,
+        totalRevenue,
+        totalRevenueFormatted: `₹${(totalRevenue / 100).toLocaleString('en-IN')}`,
+        activeSubscription: activeSubscription || null,
+        verifiedBy: user.googleId ? 'Google' : user.isEmailVerified ? 'OTP' : 'Not verified',
+      });
+    } catch (error) { next(error); }
+  }
+
   /**
    * POST /api/admin/users — Create a new user (admin-only)
    * Since there's no self-registration, admins create user accounts.
