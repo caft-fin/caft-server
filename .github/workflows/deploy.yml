@@ -7,8 +7,9 @@
 #   2. SSH into EC2 and pull the new image
 #   3. Run database migrations in an ephemeral container
 #      - If migration fails → pipeline aborts, old container stays live
-#   4. Restart backend with the new image
-#   5. Health-check the new container before declaring success
+#   4. Run database seed (idempotent — safe on every deploy)
+#   5. Restart backend with the new image
+#   6. Health-check the new container before declaring success
 #      - If health check fails → auto-rollback to previous image
 # ─────────────────────────────────────────────────────────
 
@@ -75,14 +76,14 @@ jobs:
 
             # ── Step 1: Authenticate with ECR ──────────────
             echo ""
-            echo "▶ Step 1/5: ECR Authentication"
+            echo "▶ Step 1/6: ECR Authentication"
             aws ecr get-login-password --region ap-south-1 \
               | docker login --username AWS --password-stdin 358464500004.dkr.ecr.ap-south-1.amazonaws.com
             echo "  ✅ ECR authenticated"
 
             # ── Step 2: Pull latest image ──────────────────
             echo ""
-            echo "▶ Step 2/5: Pulling latest image"
+            echo "▶ Step 2/6: Pulling latest image"
             docker pull 358464500004.dkr.ecr.ap-south-1.amazonaws.com/caft-server:latest
             echo "  ✅ Image pulled"
 
@@ -91,7 +92,7 @@ jobs:
             # If migrations fail, set -e aborts the script and
             # the existing live container stays untouched.
             echo ""
-            echo "▶ Step 3/5: Running database migrations"
+            echo "▶ Step 3/6: Running database migrations"
             docker compose -f docker-compose.prod.yml run \
               --rm \
               --no-deps \
@@ -99,9 +100,21 @@ jobs:
               npx prisma migrate deploy
             echo "  ✅ Migrations applied successfully"
 
-            # ── Step 4: Capture current image for rollback ──
+            # ── Step 4: Run seed (idempotent — uses upsert) ──
+            # Ensures admin user and default settings always exist.
+            # Safe to run on every deploy; upsert skips existing records.
             echo ""
-            echo "▶ Step 4/5: Deploying new container"
+            echo "▶ Step 4/6: Running database seed"
+            docker compose -f docker-compose.prod.yml run \
+              --rm \
+              --no-deps \
+              backend \
+              node dist/prisma/seed.js
+            echo "  ✅ Seed completed"
+
+            # ── Step 5: Capture current image for rollback ──
+            echo ""
+            echo "▶ Step 5/6: Deploying new container"
             PREV_IMAGE=$(docker inspect --format='{{.Config.Image}}' caft-backend 2>/dev/null || echo "none")
             echo "  Previous image: $PREV_IMAGE"
 
@@ -109,9 +122,9 @@ jobs:
             docker compose -f docker-compose.prod.yml up -d --no-deps --force-recreate backend
             echo "  Container started, waiting for health check..."
 
-            # ── Step 5: Health check with rollback ──────────
+            # ── Step 6: Health check with rollback ──────────
             echo ""
-            echo "▶ Step 5/5: Health check"
+            echo "▶ Step 6/6: Health check"
             HEALTHY=false
             for i in $(seq 1 12); do
               sleep 5

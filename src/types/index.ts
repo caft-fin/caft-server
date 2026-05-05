@@ -45,6 +45,7 @@ export interface RazorpayWebhookPayload {
   payload: {
     payment?: { entity: RazorpayPaymentEntity };
     subscription?: { entity: RazorpaySubscriptionEntity };
+    order?: { entity: RazorpayOrderEntity };
   };
   created_at: number;
 }
@@ -78,6 +79,18 @@ export interface RazorpaySubscriptionEntity {
   ended_at: number | null;
   quantity: number;
   short_url: string;
+  created_at: number;
+}
+
+export interface RazorpayOrderEntity {
+  id: string;
+  entity: string;
+  amount: number;
+  amount_paid: number;
+  amount_due: number;
+  currency: string;
+  receipt: string | null;
+  status: string;
   created_at: number;
 }
 

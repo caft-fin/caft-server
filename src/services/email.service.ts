@@ -132,4 +132,68 @@ export class EmailService {
 </div></body></html>`;
     await sendEmail(to, `Subscription renewal — ${planName}`, html);
   }
+
+  static async sendSubscriptionActivatedEmail(to: string, name: string, planName: string, periodEnd: string): Promise<void> {
+    const html = `
+<!DOCTYPE html><html><body style="font-family:'Inter',sans-serif;background:#f9fafb;padding:40px 0;">
+<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+  <div style="text-align:center;margin-bottom:24px;">
+    <div style="width:64px;height:64px;background:#dbeafe;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;">
+      <span style="font-size:32px;">🚀</span>
+    </div>
+  </div>
+  <h1 style="color:#111827;font-size:24px;text-align:center;margin:0 0 8px;">Subscription Activated</h1>
+  <p style="color:#6b7280;text-align:center;margin:0 0 24px;">Your plan is now live</p>
+  <div style="background:#f9fafb;border-radius:12px;padding:20px;margin:16px 0;">
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px;"><span style="color:#6b7280;">Plan</span><span style="color:#111827;font-weight:700;">${planName}</span></div>
+    <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Active Until</span><span style="color:#111827;font-weight:700;">${periodEnd}</span></div>
+  </div>
+  <p style="color:#374151;text-align:center;">Hi ${name}, your <strong>${planName}</strong> subscription is now active. Enjoy full access to all premium features!</p>
+  <div style="text-align:center;">
+    <a href="${env.APP_URL}/dashboard" style="display:inline-block;background:linear-gradient(135deg,#E67E22,#F39C12);color:#fff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;margin:24px 0;">Go to Dashboard</a>
+  </div>
+</div></body></html>`;
+    await sendEmail(to, `Your ${planName} subscription is now active! 🚀`, html);
+  }
+
+  static async sendSubscriptionCancelledEmail(to: string, name: string, planName: string): Promise<void> {
+    const html = `
+<!DOCTYPE html><html><body style="font-family:'Inter',sans-serif;background:#f9fafb;padding:40px 0;">
+<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+  <div style="text-align:center;margin-bottom:24px;">
+    <div style="width:64px;height:64px;background:#fef3c7;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;">
+      <span style="font-size:32px;">⚠️</span>
+    </div>
+  </div>
+  <h1 style="color:#111827;font-size:24px;text-align:center;">Subscription Cancelled</h1>
+  <p style="color:#374151;text-align:center;">Hi ${name}, your <strong>${planName}</strong> subscription has been cancelled.</p>
+  <p style="color:#6b7280;font-size:14px;text-align:center;">You'll retain access until the end of your current billing period. After that, your account will revert to the free tier.</p>
+  <div style="text-align:center;">
+    <a href="${env.APP_URL}/pricing" style="display:inline-block;background:#E67E22;color:#fff;padding:14px 32px;border-radius:12px;text-decoration:none;font-weight:700;margin:24px 0;">Resubscribe</a>
+  </div>
+  <p style="color:#9ca3af;font-size:12px;text-align:center;">Changed your mind? You can resubscribe anytime.</p>
+</div></body></html>`;
+    await sendEmail(to, `Your ${planName} subscription has been cancelled`, html);
+  }
+
+  static async sendSubscriptionChargedEmail(to: string, name: string, planName: string, amount: number, paymentId: string): Promise<void> {
+    const html = `
+<!DOCTYPE html><html><body style="font-family:'Inter',sans-serif;background:#f9fafb;padding:40px 0;">
+<div style="max-width:480px;margin:0 auto;background:#fff;border-radius:16px;padding:40px;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+  <div style="text-align:center;margin-bottom:24px;">
+    <div style="width:64px;height:64px;background:#dcfce7;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;">
+      <span style="font-size:32px;">✓</span>
+    </div>
+  </div>
+  <h1 style="color:#111827;font-size:24px;text-align:center;margin:0 0 8px;">Renewal Payment Received</h1>
+  <p style="color:#6b7280;text-align:center;margin:0 0 24px;">Your subscription has been renewed</p>
+  <div style="background:#f9fafb;border-radius:12px;padding:20px;margin:16px 0;">
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px;"><span style="color:#6b7280;">Amount</span><span style="color:#111827;font-weight:700;">${formatCurrency(amount)}</span></div>
+    <div style="display:flex;justify-content:space-between;margin-bottom:12px;"><span style="color:#6b7280;">Plan</span><span style="color:#111827;font-weight:700;">${planName}</span></div>
+    <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Payment ID</span><span style="color:#111827;font-weight:700;">${paymentId}</span></div>
+  </div>
+  <p style="color:#6b7280;font-size:14px;text-align:center;">Thank you for being a CAFT Financial subscriber, ${name}!</p>
+</div></body></html>`;
+    await sendEmail(to, `Renewal receipt — ${formatCurrency(amount)} for ${planName}`, html);
+  }
 }
