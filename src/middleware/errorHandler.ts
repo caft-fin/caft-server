@@ -33,7 +33,30 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     return;
   }
 
-  // Prisma known errors
+  // Prisma connection / initialization errors (DB unreachable, bad credentials, etc.)
+  if (
+    err.constructor.name === 'PrismaClientInitializationError' ||
+    err.constructor.name === 'PrismaClientRustPanicError'
+  ) {
+    console.error('❌ DATABASE CONNECTION FAILURE:', err.message);
+    res.status(503).json({
+      success: false,
+      message: 'Service temporarily unavailable. Please try again shortly.',
+    });
+    return;
+  }
+
+  // Prisma schema validation errors (column doesn't exist, enum mismatch, etc.)
+  if (err.constructor.name === 'PrismaClientValidationError') {
+    console.error('❌ PRISMA SCHEMA MISMATCH — this indicates a migration has not been applied:', err.message);
+    res.status(503).json({
+      success: false,
+      message: 'Service temporarily unavailable. Please try again shortly.',
+    });
+    return;
+  }
+
+  // Prisma known request errors (constraint violations, record not found, etc.)
   if (err.constructor.name === 'PrismaClientKnownRequestError') {
     const prismaErr = err as any;
     switch (prismaErr.code) {
@@ -50,6 +73,7 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
         });
         return;
       default:
+        console.error(`❌ Prisma error ${prismaErr.code}:`, err.message);
         res.status(400).json({
           success: false,
           message: 'Database error',

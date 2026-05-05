@@ -29,5 +29,5 @@ COPY --from=builder /app/prisma ./prisma
 
 EXPOSE 5000
 
-# Run migrations then start server
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/index.js"]
+# Start server
+CMD ["node", "dist/src/index.js"]
