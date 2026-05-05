@@ -22,6 +22,7 @@ import { connectRedis, disconnectRedis } from './config/redis';
 import { prisma } from './config/database';
 import { errorHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
+import { authenticate } from './middleware/auth';
 
 // Route imports
 import authRoutes from './routes/auth.routes';
@@ -95,8 +96,8 @@ app.get('/api/pricing', async (_req, res, next) => {
     });
 
     // Transform to match frontend PricingPlan interface
-    const formatted = plans.map((p) => {
-      const monthlyPricing = p.pricing.find(pr => pr.billingCycle === 'MONTHLY');
+    const formatted = plans.map((p: any) => {
+      const monthlyPricing = p.pricing.find((pr: any) => pr.billingCycle === 'MONTHLY');
       return {
         id: p.id,
         slug: p.slug,
@@ -111,8 +112,8 @@ app.get('/api/pricing', async (_req, res, next) => {
         freeTrialDays: p.freeTrialDays,
         discountPercent: p.discountPercent,
         discountLabel: p.discountLabel,
-        features: p.features.map((f) => ({ name: f.name, included: f.included, icon: f.icon })),
-        pricing: p.pricing.map((pr) => ({ billingCycle: pr.billingCycle, price: pr.price / 100 })),
+        features: p.features.map((f: any) => ({ name: f.name, included: f.included, icon: f.icon })),
+        pricing: p.pricing.map((pr: any) => ({ billingCycle: pr.billingCycle, price: pr.price / 100 })),
         isPopular: p.isPopular,
       };
     });
@@ -121,20 +122,14 @@ app.get('/api/pricing', async (_req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.get('/api/transactions', async (req, res, next) => {
-  try {
-    const transactions = await prisma.transaction.findMany({
-      take: 10,
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(transactions);
-  } catch (error) { next(error); }
-});
+// NOTE: /api/transactions removed — use authenticated route GET /api/users/me/transactions instead
 
-app.get('/api/stats', async (_req, res, next) => {
+app.get('/api/stats', authenticate, async (req, res, next) => {
   try {
+    const authReq = req as import('./types').AuthenticatedRequest;
+    const userId = authReq.user!.userId;
     const totalValue = await prisma.payment.aggregate({
-      where: { status: 'CAPTURED' },
+      where: { status: 'CAPTURED', userId },
       _sum: { amount: true },
     });
 

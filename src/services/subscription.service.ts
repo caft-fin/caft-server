@@ -8,6 +8,7 @@ import { AppError } from '../utils/apiResponse';
 import { RazorpayService } from './razorpay.service';
 import { CacheService, CACHE_KEYS } from './cache.service';
 import { BillingCycleType } from '../types';
+import { env } from '../config/env';
 
 /**
  * Returns the period length in milliseconds for a billing cycle
@@ -48,12 +49,12 @@ export class SubscriptionService {
     });
     if (!plan || !plan.isActive) throw new AppError('Plan not found or inactive', 404);
 
-    // Handle FREE plans
+    // Handle FREE plans (always use plan.id for the FK reference)
     if (plan.planType === 'FREE') {
       const subscription = await prisma.subscription.create({
         data: {
           userId,
-          planId,
+          planId: plan.id,
           billingCycle,
           status: 'ACTIVE',
           currentPeriodStart: new Date(),
@@ -92,11 +93,11 @@ export class SubscriptionService {
       trialDays: plan.freeTrialEnabled ? (plan.freeTrialDays || 0) : 0,
     });
 
-    // Save subscription in DB
+    // Save subscription in DB (always use plan.id, not the user-provided planId which may be a slug)
     const subscription = await prisma.subscription.create({
       data: {
         userId,
-        planId,
+        planId: plan.id,
         razorpaySubscriptionId: rzpSubscription.subscriptionId,
         billingCycle,
         status: 'CREATED',
@@ -175,6 +176,16 @@ export class SubscriptionService {
     razorpaySubscriptionId: string,
     razorpaySignature: string
   ) {
+    // Verify Razorpay signature BEFORE doing anything else
+    const isSignatureValid = RazorpayService.verifyPaymentSignature({
+      subscriptionId: razorpaySubscriptionId,
+      paymentId: razorpayPaymentId,
+      signature: razorpaySignature,
+    });
+    if (!isSignatureValid) {
+      throw new AppError('Invalid payment signature — potential fraud attempt', 400);
+    }
+
     const subscription = await prisma.subscription.findUnique({
       where: { razorpaySubscriptionId },
       include: { plan: { include: { pricing: true } } },
@@ -234,6 +245,16 @@ export class SubscriptionService {
     razorpaySignature: string,
     subscriptionId: string
   ) {
+    // Verify Razorpay signature BEFORE doing anything else
+    const isSignatureValid = RazorpayService.verifyPaymentSignature({
+      orderId: razorpayOrderId,
+      paymentId: razorpayPaymentId,
+      signature: razorpaySignature,
+    });
+    if (!isSignatureValid) {
+      throw new AppError('Invalid payment signature — potential fraud attempt', 400);
+    }
+
     const subscription = await prisma.subscription.findUnique({
       where: { id: subscriptionId },
       include: { plan: true },

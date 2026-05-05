@@ -92,7 +92,14 @@ export function verifyPaymentSignature(
     .createHmac('sha256', secret)
     .update(body)
     .digest('hex');
-  return expectedSignature === signature;
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature),
+      Buffer.from(signature)
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

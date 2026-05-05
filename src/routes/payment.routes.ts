@@ -13,7 +13,8 @@ const router = Router();
 router.post('/webhooks/razorpay', webhookLimiter, PaymentController.webhook);
 
 // Authenticated routes
-router.get('/history', authenticate, PaymentController.getHistory);
+router.get('/', authenticate, PaymentController.getHistory);      // GET /payments?page=X&limit=Y (frontend uses this)
+router.get('/history', authenticate, PaymentController.getHistory); // Legacy alias
 router.get('/:id', authenticate, PaymentController.getById);
 
 export default router;

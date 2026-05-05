@@ -282,6 +282,13 @@ export class AdminController {
         });
       }
 
+      // Invalidate test account cache if any test account settings were changed
+      const testAccountKeys = ['testAccountEnabled', 'testAccountEmail', 'testAccountOtp'];
+      const hasTestAccountChanges = entries.some(([key]) => testAccountKeys.includes(key));
+      if (hasTestAccountChanges) {
+        await CacheService.del('settings:test_account');
+      }
+
       await prisma.auditLog.create({
         data: { userId: req.user?.userId, action: 'UPDATE_SETTINGS', entity: 'AdminSetting', details: JSON.stringify({ ...data, ...Object.fromEntries(pageEntries) }) },
       });

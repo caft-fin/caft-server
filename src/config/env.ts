@@ -30,6 +30,11 @@ const envSchema = z.object({
 
   APP_NAME: z.string().default('CAFT Financial'),
   APP_URL: z.string().default('http://localhost:3000'),
+
+  // Test account defaults (overridable via AdminSettings)
+  TEST_ACCOUNT_ENABLED: z.string().default('true'),
+  TEST_ACCOUNT_EMAIL: z.string().default('cafttest@gmail.com'),
+  TEST_ACCOUNT_OTP: z.string().default('852085'),
 });
 
 function loadEnv() {

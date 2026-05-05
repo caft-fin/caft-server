@@ -290,6 +290,10 @@ export const updateSettingsSchema = z.object({
   bannerDefaultColor: z.string().optional(),
   bannerTextSize: z.string().optional(),
   bannerFontFamily: z.string().optional(),
+  // Test Account (admin-configurable override)
+  testAccountEnabled: z.string().regex(/^(true|false)$/, 'Must be "true" or "false"').optional(),
+  testAccountEmail: z.string().email().optional(),
+  testAccountOtp: z.string().length(6, 'OTP must be 6 digits').optional(),
 });
 
 // ── Pagination Validator ─────────────────────────────────

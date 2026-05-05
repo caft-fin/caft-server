@@ -32,13 +32,22 @@ export class PaymentController {
       const signature = req.headers['x-razorpay-signature'] as string | undefined;
       const body = JSON.stringify(req.body);
 
-      // Verify webhook signature
-      if (env.RAZORPAY_WEBHOOK_SECRET && signature) {
-        const isValid = verifyRazorpaySignature(body, signature, env.RAZORPAY_WEBHOOK_SECRET);
-        if (!isValid) {
-          ApiResponse.unauthorized(res, 'Invalid webhook signature');
-          return;
-        }
+      // Webhook signature verification is MANDATORY
+      if (!env.RAZORPAY_WEBHOOK_SECRET) {
+        console.error('❌ RAZORPAY_WEBHOOK_SECRET is not configured — rejecting webhook');
+        ApiResponse.serverError(res, 'Webhook signature verification is not configured');
+        return;
+      }
+
+      if (!signature) {
+        ApiResponse.unauthorized(res, 'Missing webhook signature header');
+        return;
+      }
+
+      const isValid = verifyRazorpaySignature(body, signature, env.RAZORPAY_WEBHOOK_SECRET);
+      if (!isValid) {
+        ApiResponse.unauthorized(res, 'Invalid webhook signature');
+        return;
       }
 
       await PaymentService.handleWebhook(req.body as RazorpayWebhookPayload);

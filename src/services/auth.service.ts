@@ -11,8 +11,37 @@ import { JwtPayload } from '../types';
 import { AppError } from '../utils/apiResponse';
 import { generateOtp, generateReferralCode, addDays } from '../utils/helpers';
 import { EmailService } from './email.service';
+import { CacheService } from './cache.service';
+
+interface TestAccountConfig {
+  enabled: boolean;
+  email: string;
+  otp: string;
+}
 
 export class AuthService {
+  /**
+   * Get test account configuration.
+   * Checks AdminSettings first (admin dashboard override), falls back to env vars.
+   * Cached for 5 minutes to avoid DB hit on every login.
+   */
+  private static async getTestAccountConfig(): Promise<TestAccountConfig> {
+    return CacheService.getOrSet<TestAccountConfig>('settings:test_account', 300, async () => {
+      const settings = await prisma.adminSetting.findMany({
+        where: { key: { in: ['testAccountEnabled', 'testAccountEmail', 'testAccountOtp'] } },
+      });
+      const settingsMap = Object.fromEntries(settings.map(s => [s.key, s.value]));
+
+      return {
+        enabled: settingsMap.testAccountEnabled !== undefined
+          ? settingsMap.testAccountEnabled === 'true'
+          : env.TEST_ACCOUNT_ENABLED === 'true',
+        email: settingsMap.testAccountEmail || env.TEST_ACCOUNT_EMAIL,
+        otp: settingsMap.testAccountOtp || env.TEST_ACCOUNT_OTP,
+      };
+    });
+  }
+
   /**
    * Initiate login by sending OTP to the user's email.
    * If the email doesn't exist, auto-register the user first.
@@ -42,9 +71,10 @@ export class AuthService {
 
     if (!user.isActive) throw new AppError('Account is deactivated. Contact support.', 403);
 
-    // Special test account logic
-    const isTestAccount = email === 'cafttest@gmail.com';
-    const otp = isTestAccount ? '852085' : generateOtp();
+    // Check if this is a configured test account
+    const testConfig = await AuthService.getTestAccountConfig();
+    const isTestAccount = testConfig.enabled && email === testConfig.email;
+    const otp = isTestAccount ? testConfig.otp : generateOtp();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
     // Invalidate old OTPs
@@ -55,10 +85,11 @@ export class AuthService {
 
     await prisma.otpToken.create({ data: { userId: user.id, code: otp, expiresAt } });
 
-    // Print OTP to terminal since no email service is configured
+    // Print OTP to terminal for development convenience
     console.log(`\n🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
     console.log(`   OTP for ${email}: ${otp}`);
     console.log(`   Expires at: ${expiresAt.toLocaleTimeString()}`);
+    if (isTestAccount) console.log(`   ⚙️  Test account mode (admin-configurable)`);
     console.log(`🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
     // Send via email in background (don't block the response)
@@ -76,8 +107,9 @@ export class AuthService {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) throw new AppError('User not found', 404);
 
-    // Special test account logic
-    const isTestAccount = email === 'cafttest@gmail.com' && otpCode === '852085';
+    // Check if this is a configured test account with matching OTP
+    const testConfig = await AuthService.getTestAccountConfig();
+    const isTestAccount = testConfig.enabled && email === testConfig.email && otpCode === testConfig.otp;
 
     let otpToken = null;
     if (!isTestAccount) {
@@ -146,14 +178,17 @@ export class AuthService {
     const storedToken = await prisma.refreshToken.findUnique({ where: { token: refreshToken }, include: { user: true } });
     if (!storedToken || storedToken.revokedAt || storedToken.expiresAt < new Date()) throw new AppError('Invalid refresh token', 401);
 
-    const accessToken = jwt.sign(
-      {
-        userId: storedToken.user.id, email: storedToken.user.email,
-        role: storedToken.user.role, isSuperAdmin: storedToken.user.isSuperAdmin,
-      } as JwtPayload,
-      env.JWT_ACCESS_SECRET,
-      { expiresIn: env.JWT_ACCESS_EXPIRY as string as any }
-    );
+    const payload: JwtPayload = {
+      userId: storedToken.user.id,
+      email: storedToken.user.email,
+      role: storedToken.user.role as 'USER' | 'ADMIN',
+      isSuperAdmin: storedToken.user.isSuperAdmin,
+    };
+
+    const accessToken = jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+      expiresIn: env.JWT_ACCESS_EXPIRY,
+    } as jwt.SignOptions);
+
     return { accessToken };
   }
 
@@ -173,7 +208,9 @@ export class AuthService {
       role: user.role as 'USER' | 'ADMIN',
       isSuperAdmin: user.isSuperAdmin,
     };
-    const accessToken = jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRY as string as any });
+    const accessToken = jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+      expiresIn: env.JWT_ACCESS_EXPIRY,
+    } as jwt.SignOptions);
     const refreshToken = uuidv4();
     return { accessToken, refreshToken };
   }

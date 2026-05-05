@@ -191,7 +191,9 @@ export class RazorpayService {
   }
 
   /**
-   * Verify payment signature for both subscription and order payments
+   * Verify payment signature for both subscription and order payments.
+   * Always uses RAZORPAY_KEY_SECRET (not webhook secret — they serve different purposes).
+   * Uses constant-time comparison to prevent timing attacks.
    */
   static verifyPaymentSignature(params: {
     orderId?: string;
@@ -199,23 +201,31 @@ export class RazorpayService {
     paymentId: string;
     signature: string;
   }): boolean {
-    const secret = env.RAZORPAY_WEBHOOK_SECRET || env.RAZORPAY_KEY_SECRET;
-    let expectedSignature: string;
+    const secret = env.RAZORPAY_KEY_SECRET;
+    let body: string;
 
     if (params.subscriptionId) {
-      expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(`${params.paymentId}|${params.subscriptionId}`)
-        .digest('hex');
+      body = `${params.paymentId}|${params.subscriptionId}`;
     } else if (params.orderId) {
-      expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(`${params.orderId}|${params.paymentId}`)
-        .digest('hex');
+      body = `${params.orderId}|${params.paymentId}`;
     } else {
       return false;
     }
 
-    return expectedSignature === params.signature;
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(body)
+      .digest('hex');
+
+    // Constant-time comparison to prevent timing attacks
+    try {
+      return crypto.timingSafeEqual(
+        Buffer.from(expectedSignature),
+        Buffer.from(params.signature)
+      );
+    } catch {
+      // timingSafeEqual throws if buffer lengths differ — that means signatures don't match
+      return false;
+    }
   }
 }

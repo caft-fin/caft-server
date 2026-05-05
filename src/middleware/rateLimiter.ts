@@ -12,16 +12,27 @@ interface RateLimitOptions {
   keyPrefix?: string;  // Redis key prefix
 }
 
+// In-memory fallback store for when Redis is unavailable
+const memoryStore = new Map<string, { count: number; expiresAt: number }>();
+
+// Periodically clean expired entries from memory store (every 60 seconds)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of memoryStore) {
+    if (entry.expiresAt <= now) memoryStore.delete(key);
+  }
+}, 60_000);
+
 export function rateLimiter(options: RateLimitOptions) {
   const { windowMs, maxRequests, keyPrefix = 'ratelimit' } = options;
   const windowSec = Math.ceil(windowMs / 1000);
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const key = `${keyPrefix}:${ip}`;
+
     try {
       const redis = getRedisClient();
-      const ip = req.ip || req.socket.remoteAddress || 'unknown';
-      const key = `${keyPrefix}:${ip}`;
-
       const current = await redis.incr(key);
 
       if (current === 1) {
@@ -41,9 +52,30 @@ export function rateLimiter(options: RateLimitOptions) {
       }
 
       next();
-    } catch (error) {
-      // If Redis is down, let the request through
-      console.warn('⚠️  Rate limiter error, allowing request:', (error as Error).message);
+    } catch {
+      // Redis is down — use in-memory fallback (never skip rate limiting)
+      const now = Date.now();
+      const entry = memoryStore.get(key);
+
+      if (!entry || entry.expiresAt <= now) {
+        memoryStore.set(key, { count: 1, expiresAt: now + windowMs });
+        next();
+        return;
+      }
+
+      entry.count += 1;
+
+      res.set({
+        'X-RateLimit-Limit': maxRequests.toString(),
+        'X-RateLimit-Remaining': Math.max(0, maxRequests - entry.count).toString(),
+        'X-RateLimit-Reset': new Date(entry.expiresAt).toISOString(),
+      });
+
+      if (entry.count > maxRequests) {
+        ApiResponse.error(res, 'Too many requests, please try again later', 429);
+        return;
+      }
+
       next();
     }
   };
