@@ -365,16 +365,23 @@ export class PlanService {
   static async deletePlan(id: string) {
     const plan = await prisma.plan.findUnique({
       where: { id },
-      include: { _count: { select: { subscriptions: { where: { status: 'ACTIVE' } } } } },
+      include: { 
+        _count: { 
+          select: { 
+            subscriptions: true,
+            purchases: true 
+          } 
+        } 
+      },
     });
 
     if (!plan) throw new AppError('Plan not found', 404);
 
-    if (plan._count.subscriptions > 0) {
-      // Soft delete — don't remove plans with active subscribers
+    if (plan._count.subscriptions > 0 || plan._count.purchases > 0) {
+      // Soft delete — don't remove plans with any subscriber or purchase history
       await prisma.plan.update({ where: { id }, data: { isActive: false } });
     } else {
-      // Hard delete if no active subscriptions
+      // Hard delete if no subscriptions or purchases exist
       await prisma.planPricing.deleteMany({ where: { planId: id } });
       await prisma.planFeature.deleteMany({ where: { planId: id } });
       await prisma.bundlePlan.deleteMany({ where: { planId: id } });

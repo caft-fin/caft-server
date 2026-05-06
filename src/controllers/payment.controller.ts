@@ -30,7 +30,7 @@ export class PaymentController {
   static async webhook(req: Request, res: Response, next: NextFunction) {
     try {
       const signature = req.headers['x-razorpay-signature'] as string | undefined;
-      const body = JSON.stringify(req.body);
+      const body = (req as any).rawBody || JSON.stringify(req.body);
 
       // Webhook signature verification is MANDATORY
       if (!env.RAZORPAY_WEBHOOK_SECRET) {
