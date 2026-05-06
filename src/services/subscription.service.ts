@@ -36,13 +36,48 @@ export class SubscriptionService {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new AppError('User not found', 404);
 
-    // Check for existing active subscription
-    const existing = await prisma.subscription.findFirst({
-      where: { userId, status: { in: ['ACTIVE', 'AUTHENTICATED', 'CREATED'] } },
+    // Clean up stale CREATED subscriptions (user opened Razorpay modal but closed without paying)
+    // These are abandoned checkouts — safe to remove so the user can try again.
+    const staleCreated = await prisma.subscription.findMany({
+      where: { userId, status: 'CREATED' },
     });
-    if (existing) throw new AppError('You already have an active subscription. Cancel it first or upgrade.', 409);
+    if (staleCreated.length > 0) {
+      await prisma.subscription.deleteMany({
+        where: { userId, status: 'CREATED' },
+      });
+    }
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(planId);
+
+    // Check for a genuinely active subscription (ACTIVE or AUTHENTICATED — NOT CREATED)
+    const existing = await prisma.subscription.findFirst({
+      where: { userId, status: { in: ['ACTIVE', 'AUTHENTICATED'] } },
+    });
+
+    // Only block if the existing active sub is for a DIFFERENT plan or is a recurring sub
+    // One-time purchases for different products should be allowed
+    if (existing) {
+      const targetPlan = await prisma.plan.findFirst({
+        where: isUuid ? { id: planId } : { slug: planId },
+      });
+
+      // Allow one-time purchases alongside an existing subscription
+      // (one-time products are separate from subscriptions)
+      if (targetPlan?.isOneTime) {
+        // Check if user already owns THIS specific one-time product
+        const alreadyOwns = await prisma.subscription.findFirst({
+          where: { userId, planId: targetPlan.id, status: 'ACTIVE', isOneTime: true },
+        });
+        if (alreadyOwns) {
+          throw new AppError('You already own this product.', 409);
+        }
+        // Otherwise allow — one-time products don't conflict with subscriptions
+      } else if (!existing.isOneTime) {
+        // User has an active recurring subscription and is trying to get another recurring one
+        throw new AppError('You already have an active subscription. Cancel it first or upgrade.', 409);
+      }
+    }
+
     const plan = await prisma.plan.findFirst({
       where: isUuid ? { id: planId } : { slug: planId },
       include: { pricing: true },
