@@ -30,9 +30,17 @@ router.get('/stats/revenue', AdminController.getRevenueStats);
 router.get('/settings', AdminController.getSettings);
 router.put('/settings', AdminController.updateSettings);
 
+// Category Pricing — manage pricing rules per item category
+router.get('/category-pricing', AdminController.getCategoryPricing);
+router.put('/category-pricing', AdminController.upsertCategoryPricing);
+
+// Plan subscriber details — view subscribers per plan
+router.get('/plans/:planId/subscribers', AdminController.getPlanSubscribers);
+
 // Danger Zone (SUPERADMIN ONLY) — full database inspection
 router.get('/danger/tables', superAdminGuard, AdminController.listTables);
 router.get('/danger/tables/:table', superAdminGuard, AdminController.getTableRecords);
 router.delete('/danger/tables/:table/:id', superAdminGuard, AdminController.deleteRecord);
 
 export default router;
+

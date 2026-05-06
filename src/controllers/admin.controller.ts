@@ -10,6 +10,7 @@ import { AuthenticatedRequest } from '../types';
 import { paginationSchema, updateSettingsSchema } from '../utils/validators';
 import { computePagination, generateReferralCode } from '../utils/helpers';
 import { CacheService, CACHE_KEYS, CACHE_TTL } from '../services/cache.service';
+import { CategoryPricingService } from '../services/categoryPricing.service';
 
 export class AdminController {
   // ── User Management ─────────────────────────────────
@@ -489,6 +490,125 @@ export class AdminController {
       });
 
       ApiResponse.success(res, null, `Record deleted from ${AdminController.TABLE_MAP[modelName]}`);
+    } catch (error) { next(error); }
+  }
+
+  // ── Category Pricing ─────────────────────────────────
+
+  /**
+   * GET /admin/category-pricing
+   * Returns all category pricing rules
+   */
+  static async getCategoryPricing(req: Request, res: Response, next: NextFunction) {
+    try {
+      const pricing = await CategoryPricingService.getAll();
+      ApiResponse.success(res, pricing);
+    } catch (error) { next(error); }
+  }
+
+  /**
+   * PUT /admin/category-pricing
+   * Upsert pricing for a specific item category
+   */
+  static async upsertCategoryPricing(req: Request, res: Response, next: NextFunction) {
+    try {
+      const input = req.body;
+      if (!input.itemCategory) {
+        return ApiResponse.error(res, 'itemCategory is required', 400);
+      }
+      const result = await CategoryPricingService.upsert(input);
+      ApiResponse.success(res, result, 'Category pricing updated');
+    } catch (error) { next(error); }
+  }
+
+  // ── Plan Subscriber Details ──────────────────────────
+
+  /**
+   * GET /admin/plans/:planId/subscribers
+   * Returns detailed subscriber list for a specific plan
+   * Includes: name, email, phone, location, amount paid, payment history
+   */
+  static async getPlanSubscribers(req: Request, res: Response, next: NextFunction) {
+    try {
+      const planId = req.params.planId as string;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+
+      // Verify plan exists
+      const plan = await prisma.plan.findUnique({ where: { id: planId } });
+      if (!plan) return ApiResponse.error(res, 'Plan not found', 404);
+
+      // Get subscribers with full details
+      const [subscriptions, total] = await Promise.all([
+        prisma.subscription.findMany({
+          where: { planId: planId, status: { in: ['ACTIVE', 'AUTHENTICATED'] } },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+                phone: true,
+                lastCity: true,
+                lastState: true,
+                lastCountry: true,
+                lastPincode: true,
+                createdAt: true,
+                lastLoginAt: true,
+              },
+            },
+            payments: {
+              select: {
+                id: true,
+                amount: true,
+                currency: true,
+                status: true,
+                method: true,
+                razorpayPaymentId: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: 'desc' as const },
+              take: 10,
+            },
+          },
+          skip: (page - 1) * limit,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.subscription.count({
+          where: { planId: planId, status: { in: ['ACTIVE', 'AUTHENTICATED'] } },
+        }),
+      ]);
+
+      // Map to detailed subscriber view
+      const subscribers = subscriptions.map((sub: any) => {
+        const totalPaid = (sub.payments || [])
+          .filter((p: any) => p.status === 'CAPTURED')
+          .reduce((sum: number, p: any) => sum + p.amount, 0);
+
+        return {
+          subscriptionId: sub.id,
+          status: sub.status,
+          billingCycle: sub.billingCycle,
+          subscribedAt: sub.createdAt,
+          currentPeriodEnd: sub.currentPeriodEnd,
+          user: sub.user,
+          location: [
+            sub.user?.lastCity,
+            sub.user?.lastState,
+            sub.user?.lastCountry,
+          ].filter(Boolean).join(', ') || 'Unknown',
+          totalPaid,
+          totalPaidFormatted: `₹${(totalPaid / 100).toLocaleString()}`,
+          paymentHistory: sub.payments || [],
+        };
+      });
+
+      ApiResponse.success(res, {
+        plan: { id: plan.id, name: plan.name, slug: plan.slug, itemCategory: plan.itemCategory },
+        subscribers,
+        meta: computePagination(total, page, limit),
+      });
     } catch (error) { next(error); }
   }
 }

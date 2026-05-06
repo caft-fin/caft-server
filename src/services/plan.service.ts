@@ -86,6 +86,16 @@ export class PlanService {
         freeTrialDays: input.freeTrialEnabled ? input.freeTrialDays : null,
         discountPercent: input.discountPercent,
         discountLabel: input.discountLabel,
+        gstMode: input.gstMode ?? undefined,
+        gstValue: input.gstValue ?? undefined,
+        gatewayChargeMode: input.gatewayChargeMode ?? undefined,
+        gatewayChargeValue: input.gatewayChargeValue ?? undefined,
+        serviceFeeMode: input.serviceFeeMode ?? undefined,
+        serviceFeeValue: input.serviceFeeValue ?? undefined,
+        processingFeeMode: input.processingFeeMode ?? undefined,
+        processingFeeValue: input.processingFeeValue ?? undefined,
+        platformChargeMode: input.platformChargeMode ?? undefined,
+        platformChargeValue: input.platformChargeValue ?? undefined,
         features: {
           create: input.features.map((f, i) => ({
             name: f.name,
@@ -283,6 +293,16 @@ export class PlanService {
     if (input.freeTrialDays !== undefined) updateData.freeTrialDays = input.freeTrialDays;
     if (input.discountPercent !== undefined) updateData.discountPercent = input.discountPercent;
     if (input.discountLabel !== undefined) updateData.discountLabel = input.discountLabel;
+    if (input.gstMode !== undefined) updateData.gstMode = input.gstMode;
+    if (input.gstValue !== undefined) updateData.gstValue = input.gstValue;
+    if (input.gatewayChargeMode !== undefined) updateData.gatewayChargeMode = input.gatewayChargeMode;
+    if (input.gatewayChargeValue !== undefined) updateData.gatewayChargeValue = input.gatewayChargeValue;
+    if (input.serviceFeeMode !== undefined) updateData.serviceFeeMode = input.serviceFeeMode;
+    if (input.serviceFeeValue !== undefined) updateData.serviceFeeValue = input.serviceFeeValue;
+    if (input.processingFeeMode !== undefined) updateData.processingFeeMode = input.processingFeeMode;
+    if (input.processingFeeValue !== undefined) updateData.processingFeeValue = input.processingFeeValue;
+    if (input.platformChargeMode !== undefined) updateData.platformChargeMode = input.platformChargeMode;
+    if (input.platformChargeValue !== undefined) updateData.platformChargeValue = input.platformChargeValue;
 
     // Update plan
     await prisma.plan.update({

@@ -35,6 +35,7 @@ import emailRoutes from './routes/email.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import reviewRoutes from './routes/review.routes';
 import uploadRoutes from './routes/upload.routes';
+import purchaseRoutes from './routes/purchase.routes';
 
 const app = express();
 
@@ -76,6 +77,7 @@ app.use('/api/emails', emailRoutes);
 app.use('/api/admin/analytics', analyticsRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/purchases', purchaseRoutes);
 
 // ── Public Settings (no auth required) ───────────────────
 import { AdminController } from './controllers/admin.controller';
@@ -105,6 +107,7 @@ app.get('/api/pricing', async (_req, res, next) => {
         price: monthlyPricing ? monthlyPricing.price / 100 : 0,
         description: p.description,
         planType: p.planType,
+        itemCategory: p.itemCategory,
         bannerBadge: p.bannerBadge,
         isOneTime: p.isOneTime,
         oneTimePrice: p.oneTimePrice ? p.oneTimePrice / 100 : null,
@@ -115,6 +118,8 @@ app.get('/api/pricing', async (_req, res, next) => {
         features: p.features.map((f: any) => ({ name: f.name, included: f.included, icon: f.icon })),
         pricing: p.pricing.map((pr: any) => ({ billingCycle: pr.billingCycle, price: pr.price / 100 })),
         isPopular: p.isPopular,
+        stockLimit: p.stockLimit,
+        stockAvailable: p.stockLimit !== null ? Math.max(0, p.stockLimit - p.stockSold) : null,
       };
     });
 

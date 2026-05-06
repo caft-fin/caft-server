@@ -66,6 +66,20 @@ enum BillingCycle {
   ONETIME
 }
 
+enum PurchaseStatus {
+  CREATED
+  PAID
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PricingMode {
+  PERCENT
+  FLAT
+}
+
 enum CampaignStatus {
   DRAFT
   SCHEDULED
@@ -122,6 +136,7 @@ model User {
   otpTokens          OtpToken[]
   refreshTokens      RefreshToken[]
   subscriptions      Subscription[]
+  purchases          Purchase[]
   payments           Payment[]
   transactions       Transaction[]
   linkedAccounts     LinkedAccount[]
@@ -187,7 +202,8 @@ model Plan {
   isActive         Boolean      @default(true)
   sortOrder        Int          @default(0)
   stockLimit       Int?         // Null means unlimited
-  taxPercentage    Float?       // e.g., 18.0 for 18% GST
+  stockSold        Int          @default(0) // Track units sold for physical products
+  taxPercentage    Float?       // e.g., 18.0 for 18% GST (legacy, use category pricing)
 
   // One-time purchase (lifetime)
   isOneTime        Boolean  @default(false)
@@ -201,6 +217,18 @@ model Plan {
   discountPercent  Float?   // 0.0 to 100.0
   discountLabel    String?  // e.g., "Launch Offer", "Limited Time"
 
+  // Product-level pricing overrides (null = inherit from CategoryPricing)
+  gstMode            PricingMode?
+  gstValue           Float?
+  gatewayChargeMode  PricingMode?
+  gatewayChargeValue Float?
+  serviceFeeMode     PricingMode?
+  serviceFeeValue    Float?
+  processingFeeMode  PricingMode?
+  processingFeeValue Float?
+  platformChargeMode PricingMode?
+  platformChargeValue Float?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -208,6 +236,7 @@ model Plan {
   features      PlanFeature[]
   pricing       PlanPricing[]
   subscriptions Subscription[]
+  purchases     Purchase[]
   bundlePlans   BundlePlan[]
   reviews       Review[]
 
@@ -323,12 +352,48 @@ model Subscription {
   @@map("subscriptions")
 }
 
+// ── Purchases (One-time & Physical) ─────────────────────
+
+model Purchase {
+  id                String         @id @default(uuid())
+  userId            String
+  planId            String
+  razorpayOrderId   String?        @unique
+  quantity          Int            @default(1)
+  unitPrice         Int            // Amount in paise per unit
+  totalAmount       Int            // Total in paise (incl. all charges)
+  currency          String         @default("INR")
+  status            PurchaseStatus @default(CREATED)
+
+  // Pricing breakdown (snapshot at purchase time)
+  itemPrice         Int            @default(0)
+  gstAmount         Int            @default(0)
+  gatewayCharge     Int            @default(0)
+  serviceFee        Int            @default(0)
+  processingFee     Int            @default(0)
+  platformCharge    Int            @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  plan     Plan      @relation(fields: [planId], references: [id])
+  payments Payment[]
+
+  @@index([userId])
+  @@index([planId])
+  @@index([status])
+  @@index([razorpayOrderId])
+  @@map("purchases")
+}
+
 // ── Payments ─────────────────────────────────────────────
 
 model Payment {
   id                String        @id @default(uuid())
   userId            String
   subscriptionId    String?
+  purchaseId        String?
   razorpayPaymentId String?       @unique
   razorpayOrderId   String?
   razorpaySignature String?
@@ -345,9 +410,11 @@ model Payment {
 
   user         User          @relation(fields: [userId], references: [id])
   subscription Subscription? @relation(fields: [subscriptionId], references: [id])
+  purchase     Purchase?     @relation(fields: [purchaseId], references: [id])
 
   @@index([userId])
   @@index([subscriptionId])
+  @@index([purchaseId])
   @@index([razorpayPaymentId])
   @@index([status])
   @@map("payments")
@@ -540,4 +607,36 @@ model Review {
   @@index([userId])
   @@index([status])
   @@map("reviews")
+}
+
+// ── Category Pricing ─────────────────────────────────────
+
+model CategoryPricing {
+  id                  String       @id @default(uuid())
+  itemCategory        ItemCategory @unique
+
+  // GST
+  gstMode             PricingMode  @default(PERCENT)
+  gstValue            Float        @default(0)
+
+  // Payment gateway charges
+  gatewayChargeMode   PricingMode  @default(PERCENT)
+  gatewayChargeValue  Float        @default(0)
+
+  // Service fee
+  serviceFeeMode      PricingMode  @default(PERCENT)
+  serviceFeeValue     Float        @default(0)
+
+  // Processing fee
+  processingFeeMode   PricingMode  @default(PERCENT)
+  processingFeeValue  Float        @default(0)
+
+  // Platform charges
+  platformChargeMode  PricingMode  @default(PERCENT)
+  platformChargeValue Float        @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("category_pricing")
 }

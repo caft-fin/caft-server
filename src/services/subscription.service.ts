@@ -7,6 +7,7 @@ import { BillingCycle } from '@prisma/client';
 import { AppError } from '../utils/apiResponse';
 import { RazorpayService } from './razorpay.service';
 import { CacheService, CACHE_KEYS } from './cache.service';
+import { PurchaseService } from './purchase.service';
 import { BillingCycleType } from '../types';
 import { env } from '../config/env';
 
@@ -100,9 +101,20 @@ export class SubscriptionService {
       return { subscription, razorpaySubscriptionId: null, shortUrl: null };
     }
 
-    // Handle ONE-TIME purchase
+    // Handle ONE-TIME purchase for digital products/services
+    // These use the Purchase model + Razorpay Orders (not subscriptions)
     if (plan.isOneTime && billingCycle === 'ONETIME') {
+      // For DIGITAL_PRODUCT, SERVICE, or any one-time item — use PurchaseService
+      if (plan.itemCategory === 'DIGITAL_PRODUCT' || plan.itemCategory === 'SERVICE' || plan.itemCategory === 'PHYSICAL_PRODUCT') {
+        return PurchaseService.createPurchase(userId, plan.id, 1);
+      }
+      // For SUBSCRIPTION category one-time (legacy) — use old method
       return SubscriptionService.createOneTimeSubscription(userId, plan);
+    }
+
+    // PHYSICAL_PRODUCT should never use Razorpay subscriptions — always orders
+    if (plan.itemCategory === 'PHYSICAL_PRODUCT') {
+      return PurchaseService.createPurchase(userId, plan.id, 1);
     }
 
     // Find the pricing for the selected billing cycle
@@ -238,11 +250,13 @@ export class SubscriptionService {
 
     const cycleDuration = getCycleDurationMs(subscription.billingCycle as BillingCycleType);
 
-    // Update subscription status
+    // Update subscription status to AUTHENTICATED (NOT ACTIVE)
+    // The subscription becomes ACTIVE only when Razorpay confirms
+    // payment capture via webhook (payment.captured or subscription.activated).
     await prisma.subscription.update({
       where: { id: subscription.id },
       data: {
-        status: 'ACTIVE',
+        status: 'AUTHENTICATED',
         currentPeriodStart: new Date(),
         currentPeriodEnd: cycleDuration > 0
           ? new Date(Date.now() + cycleDuration)
@@ -250,7 +264,7 @@ export class SubscriptionService {
       },
     });
 
-    // Record payment
+    // Record payment as AUTHORIZED (not CAPTURED — webhook will capture)
     await prisma.payment.create({
       data: {
         userId,
@@ -259,7 +273,7 @@ export class SubscriptionService {
         razorpaySignature,
         amount,
         currency: subscription.plan.currency,
-        status: 'CAPTURED',
+        status: 'AUTHORIZED',
         description: `${subscription.plan.name} - ${subscription.billingCycle} subscription`,
       },
     });
@@ -267,7 +281,7 @@ export class SubscriptionService {
     // Invalidate cache
     await CacheService.del(CACHE_KEYS.USER_SUBSCRIPTION(userId));
 
-    return { message: 'Payment verified and subscription activated' };
+    return { message: 'Payment verified — subscription will activate upon payment capture' };
   }
 
   /**
@@ -330,10 +344,21 @@ export class SubscriptionService {
   }
 
   /**
-   * Get user's active subscription
+   * Get user's active subscription (only ACTIVE — not AUTHENTICATED or CREATED)
    */
   static async getActiveSubscription(userId: string) {
     return prisma.subscription.findFirst({
+      where: { userId, status: 'ACTIVE' },
+      include: { plan: { include: { features: true, pricing: true } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Get ALL user subscriptions (including non-active) for display
+   */
+  static async getAllUserSubscriptions(userId: string) {
+    return prisma.subscription.findMany({
       where: { userId, status: { in: ['ACTIVE', 'AUTHENTICATED'] } },
       include: { plan: { include: { features: true, pricing: true } } },
       orderBy: { createdAt: 'desc' },

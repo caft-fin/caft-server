@@ -161,6 +161,44 @@ export class PaymentService {
         where: { id: existing.id },
         data: { status: 'CAPTURED', method: paymentEntity.method },
       });
+
+      // ── CRITICAL: Activate subscription on payment capture ──
+      // This is the ONLY place where a subscription transitions to ACTIVE
+      // (besides the subscription.activated webhook which handles the same).
+      if (existing.subscriptionId) {
+        const sub = await prisma.subscription.findUnique({
+          where: { id: existing.subscriptionId },
+        });
+        if (sub && (sub.status === 'CREATED' || sub.status === 'AUTHENTICATED')) {
+          await prisma.subscription.update({
+            where: { id: sub.id },
+            data: { status: 'ACTIVE' },
+          });
+          await CacheService.del(CACHE_KEYS.USER_SUBSCRIPTION(sub.userId));
+        }
+      }
+
+      // ── Activate purchase on payment capture ──
+      if (existing.purchaseId) {
+        const purchase = await prisma.purchase.findUnique({
+          where: { id: existing.purchaseId },
+          include: { plan: true },
+        });
+        if (purchase && purchase.status === 'CREATED') {
+          await prisma.purchase.update({
+            where: { id: purchase.id },
+            data: { status: 'PAID' },
+          });
+          // For physical products, increment stockSold
+          if (purchase.plan.itemCategory === 'PHYSICAL_PRODUCT') {
+            await prisma.plan.update({
+              where: { id: purchase.planId },
+              data: { stockSold: { increment: purchase.quantity } },
+            });
+          }
+          await CacheService.del(CACHE_KEYS.USER_SUBSCRIPTION(purchase.userId));
+        }
+      }
     }
 
     // Send receipt email
@@ -172,11 +210,16 @@ export class PaymentService {
       const sub = existing?.subscriptionId
         ? await prisma.subscription.findUnique({ where: { id: existing.subscriptionId }, include: { plan: true } })
         : null;
+      const purchase = existing?.purchaseId
+        ? await prisma.purchase.findUnique({ where: { id: existing.purchaseId }, include: { plan: true } })
+        : null;
+
+      const productName = sub?.plan?.name || purchase?.plan?.name || 'CAFT Service';
 
       await EmailService.sendPaymentSuccessEmail(
         user.email, user.name,
         paymentEntity.amount,
-        sub?.plan?.name || 'CAFT Service',
+        productName,
         paymentEntity.id
       );
     }
@@ -239,8 +282,29 @@ export class PaymentService {
       }
     }
 
+    // Find and activate any Purchase linked to this order
+    const purchase = await prisma.purchase.findUnique({
+      where: { razorpayOrderId: orderEntity.id },
+      include: { plan: true },
+    });
+    if (purchase && purchase.status === 'CREATED') {
+      await prisma.purchase.update({
+        where: { id: purchase.id },
+        data: { status: 'PAID' },
+      });
+      // For physical products, increment stockSold
+      if (purchase.plan.itemCategory === 'PHYSICAL_PRODUCT') {
+        await prisma.plan.update({
+          where: { id: purchase.planId },
+          data: { stockSold: { increment: purchase.quantity } },
+        });
+      }
+      await CacheService.del(CACHE_KEYS.USER_SUBSCRIPTION(purchase.userId));
+    }
+
     await PaymentService.logWebhookEvent(payload,
-      `Order ${orderEntity.id} paid — ${formatCurrency(orderEntity.amount)} (status: ${orderEntity.status})`
+      `Order ${orderEntity.id} paid — ${formatCurrency(orderEntity.amount)} (status: ${orderEntity.status})`,
+      purchase?.userId
     );
 
     await CacheService.del(CACHE_KEYS.STATS_OVERVIEW);

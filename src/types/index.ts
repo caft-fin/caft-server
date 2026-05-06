@@ -150,6 +150,18 @@ export interface CreatePlanInput {
   discountPercent?: number; // 0 to 100
   discountLabel?: string;
 
+  // Pricing Overrides
+  gstMode?: PricingModeEnum | null;
+  gstValue?: number | null;
+  gatewayChargeMode?: PricingModeEnum | null;
+  gatewayChargeValue?: number | null;
+  serviceFeeMode?: PricingModeEnum | null;
+  serviceFeeValue?: number | null;
+  processingFeeMode?: PricingModeEnum | null;
+  processingFeeValue?: number | null;
+  platformChargeMode?: PricingModeEnum | null;
+  platformChargeValue?: number | null;
+
   // Pricing for each billing cycle
   pricing: PlanPricingInput[];
 
@@ -182,6 +194,18 @@ export interface UpdatePlanInput {
   // Discount
   discountPercent?: number | null;
   discountLabel?: string | null;
+
+  // Pricing Overrides
+  gstMode?: PricingModeEnum | null;
+  gstValue?: number | null;
+  gatewayChargeMode?: PricingModeEnum | null;
+  gatewayChargeValue?: number | null;
+  serviceFeeMode?: PricingModeEnum | null;
+  serviceFeeValue?: number | null;
+  processingFeeMode?: PricingModeEnum | null;
+  processingFeeValue?: number | null;
+  platformChargeMode?: PricingModeEnum | null;
+  platformChargeValue?: number | null;
 
   // Pricing for each billing cycle (replaces all pricing)
   pricing?: PlanPricingInput[];
@@ -236,4 +260,32 @@ export interface UpdateReviewInput {
   rating?: number;
   comment?: string;
   status?: ReviewStatusEnum;
+}
+
+// ── Pricing Mode Types ───────────────────────────────────
+
+export type PricingModeEnum = 'PERCENT' | 'FLAT';
+export type PurchaseStatusEnum = 'CREATED' | 'PAID' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED' | 'REFUNDED';
+
+// ── Category Pricing Types ───────────────────────────────
+
+export interface CategoryPricingInput {
+  itemCategory: ItemCategoryEnum;
+  gstMode?: PricingModeEnum;
+  gstValue?: number;
+  gatewayChargeMode?: PricingModeEnum;
+  gatewayChargeValue?: number;
+  serviceFeeMode?: PricingModeEnum;
+  serviceFeeValue?: number;
+  processingFeeMode?: PricingModeEnum;
+  processingFeeValue?: number;
+  platformChargeMode?: PricingModeEnum;
+  platformChargeValue?: number;
+}
+
+// ── Purchase Types ───────────────────────────────────────
+
+export interface CreatePurchaseInput {
+  planId: string;
+  quantity?: number;
 }

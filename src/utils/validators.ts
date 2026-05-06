@@ -81,6 +81,18 @@ export const createPlanSchema = z.object({
   discountPercent: z.number().min(0).max(100).optional(),
   discountLabel: z.string().max(100).optional(),
 
+  // Pricing Overrides
+  gstMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  gstValue: z.number().int().min(0).nullable().optional(),
+  gatewayChargeMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  gatewayChargeValue: z.number().int().min(0).nullable().optional(),
+  serviceFeeMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  serviceFeeValue: z.number().int().min(0).nullable().optional(),
+  processingFeeMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  processingFeeValue: z.number().int().min(0).nullable().optional(),
+  platformChargeMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  platformChargeValue: z.number().int().min(0).nullable().optional(),
+
   // Pricing for each billing cycle
   pricing: z.array(planPricingSchema).default([]),
 
@@ -140,6 +152,18 @@ export const updatePlanSchema = z.object({
   // Discount
   discountPercent: z.number().min(0).max(100).optional().nullable(),
   discountLabel: z.string().max(100).optional().nullable(),
+
+  // Pricing Overrides
+  gstMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  gstValue: z.number().int().min(0).nullable().optional(),
+  gatewayChargeMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  gatewayChargeValue: z.number().int().min(0).nullable().optional(),
+  serviceFeeMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  serviceFeeValue: z.number().int().min(0).nullable().optional(),
+  processingFeeMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  processingFeeValue: z.number().int().min(0).nullable().optional(),
+  platformChargeMode: z.enum(['PERCENT', 'FLAT']).nullable().optional(),
+  platformChargeValue: z.number().int().min(0).nullable().optional(),
 
   // Pricing (replaces all existing pricing when provided)
   pricing: z.array(planPricingSchema).optional(),
