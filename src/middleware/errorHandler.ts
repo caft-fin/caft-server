@@ -73,10 +73,15 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
         });
         return;
       default:
-        console.error(`❌ Prisma error ${prismaErr.code}:`, err.message);
+        console.error(`❌ Prisma error ${prismaErr.code}:`, err.message, prismaErr.meta);
         res.status(400).json({
           success: false,
           message: 'Database error',
+          ...(process.env.NODE_ENV !== 'production' && {
+            code: prismaErr.code,
+            detail: err.message,
+            meta: prismaErr.meta,
+          }),
         });
         return;
     }
