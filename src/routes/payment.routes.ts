@@ -12,6 +12,9 @@ const router = Router();
 // Webhook (public, verified by signature)
 router.post('/webhooks/razorpay', webhookLimiter, PaymentController.webhook);
 
+// Public config (Razorpay key for frontend — eliminates key mismatch)
+router.get('/config', PaymentController.getConfig);
+
 // Authenticated routes
 router.get('/', authenticate, PaymentController.getHistory);      // GET /payments?page=X&limit=Y (frontend uses this)
 router.get('/history', authenticate, PaymentController.getHistory); // Legacy alias
