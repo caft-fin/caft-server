@@ -182,6 +182,24 @@ async function bootstrap() {
     // Connect to Redis
     await connectRedis();
 
+    // ── Validate Razorpay Configuration ───────────────────
+    console.log('\n🔐 Payment Gateway Configuration:');
+    console.log(`   Key ID:         ${env.RAZORPAY_KEY_ID ? env.RAZORPAY_KEY_ID.substring(0, 12) + '...' : '❌ MISSING'}`);
+    console.log(`   Key Secret:     ${env.RAZORPAY_KEY_SECRET ? '✅ Set' : '❌ MISSING'}`);
+    console.log(`   Webhook Secret: ${env.RAZORPAY_WEBHOOK_SECRET ? '✅ Set' : '⚠️  NOT SET'}`);
+
+    if (!env.RAZORPAY_KEY_ID || !env.RAZORPAY_KEY_SECRET) {
+      console.error('\n❌ RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are REQUIRED for payments to work.');
+      console.error('   Set them in your .env file or environment variables.\n');
+    }
+
+    if (!env.RAZORPAY_WEBHOOK_SECRET) {
+      console.warn('\n⚠️  RAZORPAY_WEBHOOK_SECRET is not set!');
+      console.warn('   Webhooks will be REJECTED — subscriptions will NOT activate after payment.');
+      console.warn('   Set it in Razorpay Dashboard → Settings → Webhooks → Secret');
+      console.warn('   Then add RAZORPAY_WEBHOOK_SECRET to your .env / .env.prod file.\n');
+    }
+
     // Start server
     app.listen(env.PORT, () => {
       console.log(`\n🚀 CAFT Financial API Server`);

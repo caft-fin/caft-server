@@ -72,10 +72,15 @@ export function verifyRazorpaySignature(
     .createHmac('sha256', secret)
     .update(body)
     .digest('hex');
-  return crypto.timingSafeEqual(
-    Buffer.from(expectedSignature),
-    Buffer.from(signature)
-  );
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(expectedSignature),
+      Buffer.from(signature)
+    );
+  } catch {
+    // timingSafeEqual throws if buffer lengths differ — signatures don't match
+    return false;
+  }
 }
 
 /**
