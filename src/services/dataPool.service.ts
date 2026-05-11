@@ -773,4 +773,86 @@ export class DataPoolService {
       totalReviews: c._count.feedback,
     }));
   }
+
+  // ══════════════════════════════════════════════════════
+  // Admin — List ALL courses (including unpublished)
+  // ══════════════════════════════════════════════════════
+
+  static async listAllCourses() {
+    const courses = await prisma.course.findMany({
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        thumbnailUrl: true,
+        price: true,
+        currency: true,
+        difficulty: true,
+        totalDuration: true,
+        totalVideos: true,
+        isFeatured: true,
+        isPublished: true,
+        createdAt: true,
+        _count: { select: { enrollments: true, feedback: true, sections: true } },
+        feedback: { select: { rating: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return courses.map(c => ({
+      ...c,
+      feedback: undefined,
+      averageRating: c.feedback.length > 0
+        ? Math.round((c.feedback.reduce((s, f) => s + f.rating, 0) / c.feedback.length) * 10) / 10
+        : 0,
+      totalEnrolled: c._count.enrollments,
+      totalReviews: c._count.feedback,
+      totalSections: c._count.sections,
+    }));
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Admin — Update a course
+  // ══════════════════════════════════════════════════════
+
+  static async updateCourse(courseId: string, data: {
+    title?: string; description?: string; price?: number;
+    difficulty?: string; isPublished?: boolean; isFeatured?: boolean;
+  }) {
+    const course = await prisma.course.findUnique({ where: { id: courseId } });
+    if (!course) throw new AppError('Course not found', 404);
+
+    return await prisma.course.update({
+      where: { id: courseId },
+      data,
+    });
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Admin — Delete a course
+  // ══════════════════════════════════════════════════════
+
+  static async deleteCourse(courseId: string) {
+    const course = await prisma.course.findUnique({
+      where: { id: courseId },
+      include: { _count: { select: { enrollments: true } } },
+    });
+    if (!course) throw new AppError('Course not found', 404);
+
+    if (course._count.enrollments > 0) {
+      // Soft delete — just unpublish
+      await prisma.course.update({ where: { id: courseId }, data: { isPublished: false } });
+      return { deleted: false, unpublished: true };
+    }
+
+    // Hard delete — remove all related data
+    await prisma.videoProgress.deleteMany({ where: { courseId } });
+    await prisma.videoEvent.deleteMany({ where: { video: { courseId } } });
+    await prisma.video.deleteMany({ where: { section: { courseId } } });
+    await prisma.courseSection.deleteMany({ where: { courseId } });
+    await prisma.courseFeedback.deleteMany({ where: { courseId } });
+    await prisma.course.delete({ where: { id: courseId } });
+    return { deleted: true, unpublished: false };
+  }
 }

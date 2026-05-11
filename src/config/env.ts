@@ -25,6 +25,8 @@ const envSchema = z.object({
   AWS_REGION: z.string().default('ap-south-2'),
   AWS_ACCESS_KEY_ID: z.string(),
   AWS_SECRET_ACCESS_KEY: z.string(),
+  SES_ACCESS_KEY_ID: z.string().optional(),
+  SES_SECRET_ACCESS_KEY: z.string().optional(),
   SES_FROM_EMAIL: z.string().default('noreply@caft.financial'),
   SES_FROM_NAME: z.string().default('CAFT Financial'),
 

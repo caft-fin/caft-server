@@ -36,8 +36,11 @@ router.post('/course/:courseId/feedback', authenticate, DataPoolController.submi
 // Admin: Upload media
 router.post('/admin/upload', authenticate, adminGuard, DataPoolController.getUploadUrl);
 
-// Admin: Courses
+// Admin: Courses (list all + CRUD)
+router.get('/admin/courses', authenticate, adminGuard, DataPoolController.listAllCourses);
 router.post('/admin/courses', authenticate, adminGuard, DataPoolController.createCourse);
+router.put('/admin/courses/:courseId', authenticate, adminGuard, DataPoolController.updateCourse);
+router.delete('/admin/courses/:courseId', authenticate, adminGuard, DataPoolController.deleteCourse);
 
 // Admin: Analytics
 router.get('/admin/analytics/platform', authenticate, adminGuard, DataPoolController.getPlatformMetrics);

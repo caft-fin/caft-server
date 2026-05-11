@@ -377,6 +377,9 @@ export class PlanService {
 
     if (!plan) throw new AppError('Plan not found', 404);
 
+    // Unlink any courses referencing this plan (prevents FK constraint failure)
+    await prisma.course.updateMany({ where: { planId: id }, data: { planId: null } });
+
     if (plan._count.subscriptions > 0 || plan._count.purchases > 0) {
       // Soft delete — don't remove plans with any subscriber or purchase history
       await prisma.plan.update({ where: { id }, data: { isActive: false } });

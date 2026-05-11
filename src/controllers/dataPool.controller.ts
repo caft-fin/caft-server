@@ -322,4 +322,40 @@ export class DataPoolController {
       res.json({ success: true, ...result });
     } catch (error) { next(error); }
   }
+
+  /**
+   * GET /api/dp/admin/courses
+   * Admin: List ALL courses (including unpublished)
+   */
+  static async listAllCourses(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const courses = await DataPoolService.listAllCourses();
+      res.json({ success: true, data: courses });
+    } catch (error) { next(error); }
+  }
+
+  /**
+   * PUT /api/dp/admin/courses/:courseId
+   * Admin: Update a course
+   */
+  static async updateCourse(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const courseId = req.params.courseId as string;
+      const { title, description, price, difficulty, isPublished, isFeatured } = req.body;
+      const course = await DataPoolService.updateCourse(courseId, { title, description, price, difficulty, isPublished, isFeatured });
+      res.json({ success: true, data: course });
+    } catch (error) { next(error); }
+  }
+
+  /**
+   * DELETE /api/dp/admin/courses/:courseId
+   * Admin: Delete a course
+   */
+  static async deleteCourse(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const courseId = req.params.courseId as string;
+      const result = await DataPoolService.deleteCourse(courseId);
+      res.json({ success: true, data: result });
+    } catch (error) { next(error); }
+  }
 }
