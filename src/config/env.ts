@@ -22,7 +22,7 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string(),
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
 
-  AWS_REGION: z.string().default('ap-south-2'),
+  AWS_REGION: z.string().default('ap-south-1'),
   AWS_ACCESS_KEY_ID: z.string(),
   AWS_SECRET_ACCESS_KEY: z.string(),
   SES_ACCESS_KEY_ID: z.string().optional(),
@@ -31,7 +31,7 @@ const envSchema = z.object({
   SES_FROM_NAME: z.string().default('CAFT Financial'),
 
   // S3 Course Media
-  S3_COURSE_BUCKET: z.string().default('caft-academy-media-prod'),
+  S3_COURSE_BUCKET: z.string().default('caft-financial-assets-dev-12345'),
   CLOUDFRONT_DOMAIN: z.string().default(''),
   CLOUDFRONT_KEY_PAIR_ID: z.string().default(''),
   CLOUDFRONT_PRIVATE_KEY: z.string().default(''),
