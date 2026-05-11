@@ -97,7 +97,7 @@ jobs:
               --rm \
               --no-deps \
               backend \
-              npx prisma migrate deploy
+              node node_modules/prisma/build/index.js migrate deploy
             echo "  ✅ Migrations applied successfully"
 
             # ── Step 4: Run seed (idempotent — uses upsert) ──
