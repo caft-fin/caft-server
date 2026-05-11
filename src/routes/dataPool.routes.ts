@@ -42,6 +42,16 @@ router.post('/admin/courses', authenticate, adminGuard, DataPoolController.creat
 router.put('/admin/courses/:courseId', authenticate, adminGuard, DataPoolController.updateCourse);
 router.delete('/admin/courses/:courseId', authenticate, adminGuard, DataPoolController.deleteCourse);
 
+// Admin: Sections
+router.post('/admin/sections', authenticate, adminGuard, DataPoolController.createSection);
+router.put('/admin/sections/:sectionId', authenticate, adminGuard, DataPoolController.updateSection);
+router.delete('/admin/sections/:sectionId', authenticate, adminGuard, DataPoolController.deleteSection);
+
+// Admin: Videos
+router.post('/admin/videos', authenticate, adminGuard, DataPoolController.createVideo);
+router.put('/admin/videos/:videoId', authenticate, adminGuard, DataPoolController.updateVideo);
+router.delete('/admin/videos/:videoId', authenticate, adminGuard, DataPoolController.deleteVideo);
+
 // Admin: Analytics
 router.get('/admin/analytics/platform', authenticate, adminGuard, DataPoolController.getPlatformMetrics);
 router.get('/admin/analytics/export', authenticate, adminGuard, DataPoolController.exportAnalyticsCsv);

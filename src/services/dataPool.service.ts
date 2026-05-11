@@ -795,6 +795,13 @@ export class DataPoolService {
         isPublished: true,
         createdAt: true,
         _count: { select: { enrollments: true, feedback: true, sections: true } },
+        sections: { 
+          select: { 
+            id: true, title: true, orderIndex: true,
+            videos: { select: { id: true, title: true, description: true, durationSeconds: true, isPublished: true, isPreview: true, orderIndex: true }, orderBy: { orderIndex: 'asc' } }
+          }, 
+          orderBy: { orderIndex: 'asc' } 
+        },
         feedback: { select: { rating: true } },
       },
       orderBy: { createdAt: 'desc' },
@@ -819,6 +826,7 @@ export class DataPoolService {
   static async updateCourse(courseId: string, data: {
     title?: string; description?: string; price?: number;
     difficulty?: string; isPublished?: boolean; isFeatured?: boolean;
+    thumbnailUrl?: string; trailerUrl?: string; trailerS3Key?: string;
   }) {
     const course = await prisma.course.findUnique({ where: { id: courseId } });
     if (!course) throw new AppError('Course not found', 404);
@@ -827,6 +835,161 @@ export class DataPoolService {
       where: { id: courseId },
       data,
     });
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Admin — Course Sections
+  // ══════════════════════════════════════════════════════
+
+  static async createSection(courseId: string, data: { title: string; orderIndex?: number }) {
+    const course = await prisma.course.findUnique({ where: { id: courseId } });
+    if (!course) throw new AppError('Course not found', 404);
+
+    let orderIndex = data.orderIndex;
+    if (orderIndex === undefined) {
+      const lastSection = await prisma.courseSection.findFirst({
+        where: { courseId },
+        orderBy: { orderIndex: 'desc' },
+      });
+      orderIndex = lastSection ? lastSection.orderIndex + 1 : 0;
+    }
+
+    return await prisma.courseSection.create({
+      data: {
+        courseId,
+        title: data.title,
+        orderIndex,
+      },
+    });
+  }
+
+  static async updateSection(sectionId: string, data: { title?: string; orderIndex?: number }) {
+    return await prisma.courseSection.update({
+      where: { id: sectionId },
+      data,
+    });
+  }
+
+  static async deleteSection(sectionId: string) {
+    // Delete associated videos first
+    const videos = await prisma.video.findMany({ where: { sectionId }, select: { id: true } });
+    const videoIds = videos.map(v => v.id);
+
+    if (videoIds.length > 0) {
+      await prisma.videoProgress.deleteMany({ where: { videoId: { in: videoIds } } });
+      await prisma.videoEvent.deleteMany({ where: { videoId: { in: videoIds } } });
+      await prisma.video.deleteMany({ where: { sectionId } });
+    }
+
+    return await prisma.courseSection.delete({
+      where: { id: sectionId },
+    });
+  }
+
+  // ══════════════════════════════════════════════════════
+  // Admin — Videos
+  // ══════════════════════════════════════════════════════
+
+  static async createVideo(data: {
+    courseId: string;
+    sectionId: string;
+    title: string;
+    description?: string;
+    s3Key: string;
+    durationSeconds?: number;
+    isPreview?: boolean;
+    previewDurationSeconds?: number;
+    orderIndex?: number;
+    thumbnailUrl?: string;
+  }) {
+    const section = await prisma.courseSection.findUnique({ where: { id: data.sectionId } });
+    if (!section) throw new AppError('Section not found', 404);
+
+    let orderIndex = data.orderIndex;
+    if (orderIndex === undefined) {
+      const lastVideo = await prisma.video.findFirst({
+        where: { sectionId: data.sectionId },
+        orderBy: { orderIndex: 'desc' },
+      });
+      orderIndex = lastVideo ? lastVideo.orderIndex + 1 : 0;
+    }
+
+    const video = await prisma.video.create({
+      data: {
+        courseId: data.courseId,
+        sectionId: data.sectionId,
+        title: data.title,
+        description: data.description,
+        s3Key: data.s3Key,
+        durationSeconds: data.durationSeconds || 0,
+        isPreview: data.isPreview || false,
+        previewDurationSeconds: data.previewDurationSeconds || 0,
+        orderIndex,
+        thumbnailUrl: data.thumbnailUrl,
+      },
+    });
+
+    // Update total duration and video count in course
+    const allVideos = await prisma.video.findMany({ where: { courseId: data.courseId } });
+    const totalDuration = allVideos.reduce((sum, v) => sum + v.durationSeconds, 0);
+    await prisma.course.update({
+      where: { id: data.courseId },
+      data: {
+        totalVideos: allVideos.length,
+        totalDuration,
+      },
+    });
+
+    return video;
+  }
+
+  static async updateVideo(videoId: string, data: {
+    title?: string;
+    description?: string;
+    durationSeconds?: number;
+    isPreview?: boolean;
+    previewDurationSeconds?: number;
+    orderIndex?: number;
+    isPublished?: boolean;
+    thumbnailUrl?: string;
+  }) {
+    const video = await prisma.video.update({
+      where: { id: videoId },
+      data,
+    });
+
+    if (data.durationSeconds !== undefined) {
+      const allVideos = await prisma.video.findMany({ where: { courseId: video.courseId } });
+      const totalDuration = allVideos.reduce((sum, v) => sum + v.durationSeconds, 0);
+      await prisma.course.update({
+        where: { id: video.courseId },
+        data: { totalDuration },
+      });
+    }
+
+    return video;
+  }
+
+  static async deleteVideo(videoId: string) {
+    const video = await prisma.video.findUnique({ where: { id: videoId } });
+    if (!video) throw new AppError('Video not found', 404);
+
+    await prisma.videoProgress.deleteMany({ where: { videoId } });
+    await prisma.videoEvent.deleteMany({ where: { videoId } });
+    await prisma.video.delete({ where: { id: videoId } });
+
+    // Update total duration and video count in course
+    const allVideos = await prisma.video.findMany({ where: { courseId: video.courseId } });
+    const totalDuration = allVideos.reduce((sum, v) => sum + v.durationSeconds, 0);
+    await prisma.course.update({
+      where: { id: video.courseId },
+      data: {
+        totalVideos: allVideos.length,
+        totalDuration,
+      },
+    });
+
+    return { deleted: true };
   }
 
   // ══════════════════════════════════════════════════════

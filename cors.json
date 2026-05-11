@@ -1,0 +1,24 @@
+{
+    "CORSRules": [
+        {
+            "AllowedHeaders": [
+                "*"
+            ],
+            "AllowedMethods": [
+                "GET",
+                "PUT",
+                "POST",
+                "HEAD"
+            ],
+            "AllowedOrigins": [
+                "*",
+                "http://localhost:3000",
+                "https://caftfin.com"
+            ],
+            "ExposeHeaders": [
+                "ETag"
+            ],
+            "MaxAgeSeconds": 3000
+        }
+    ]
+}

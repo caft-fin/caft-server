@@ -341,8 +341,8 @@ export class DataPoolController {
   static async updateCourse(req: AuthenticatedRequest, res: Response, next: NextFunction) {
     try {
       const courseId = req.params.courseId as string;
-      const { title, description, price, difficulty, isPublished, isFeatured } = req.body;
-      const course = await DataPoolService.updateCourse(courseId, { title, description, price, difficulty, isPublished, isFeatured });
+      const { title, description, price, difficulty, isPublished, isFeatured, thumbnailUrl, trailerUrl, trailerS3Key } = req.body;
+      const course = await DataPoolService.updateCourse(courseId, { title, description, price, difficulty, isPublished, isFeatured, thumbnailUrl, trailerUrl, trailerS3Key });
       res.json({ success: true, data: course });
     } catch (error) { next(error); }
   }
@@ -356,6 +356,58 @@ export class DataPoolController {
       const courseId = req.params.courseId as string;
       const result = await DataPoolService.deleteCourse(courseId);
       res.json({ success: true, data: result });
+    } catch (error) { next(error); }
+  }
+
+  // ═══════════════════════════════════════════════════════
+  // ADMIN SECTIONS & VIDEOS
+  // ═══════════════════════════════════════════════════════
+
+  static async createSection(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const { courseId, title, orderIndex } = req.body;
+      const section = await DataPoolService.createSection(courseId, { title, orderIndex });
+      res.status(201).json({ success: true, data: section });
+    } catch (error) { next(error); }
+  }
+
+  static async updateSection(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const sectionId = req.params.sectionId as string;
+      const { title, orderIndex } = req.body;
+      const section = await DataPoolService.updateSection(sectionId, { title, orderIndex });
+      res.json({ success: true, data: section });
+    } catch (error) { next(error); }
+  }
+
+  static async deleteSection(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const sectionId = req.params.sectionId as string;
+      await DataPoolService.deleteSection(sectionId);
+      res.json({ success: true, message: 'Section deleted' });
+    } catch (error) { next(error); }
+  }
+
+  static async createVideo(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const video = await DataPoolService.createVideo(req.body);
+      res.status(201).json({ success: true, data: video });
+    } catch (error) { next(error); }
+  }
+
+  static async updateVideo(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const videoId = req.params.videoId as string;
+      const video = await DataPoolService.updateVideo(videoId, req.body);
+      res.json({ success: true, data: video });
+    } catch (error) { next(error); }
+  }
+
+  static async deleteVideo(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+    try {
+      const videoId = req.params.videoId as string;
+      await DataPoolService.deleteVideo(videoId);
+      res.json({ success: true, message: 'Video deleted' });
     } catch (error) { next(error); }
   }
 }
