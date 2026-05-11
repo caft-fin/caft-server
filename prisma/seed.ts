@@ -37,12 +37,7 @@ async function main() {
 
   const settings = [
     { key: 'appName', value: 'CAFT Financial' },
-    { key: 'timezone', value: '(GMT+05:30) Indian Standard Time' },
     { key: 'supportEmail', value: 'support@caftfin.com' },
-    { key: 'twoFactorRequired', value: 'true' },
-    { key: 'minPasswordLength', value: '12' },
-    { key: 'requireSpecialChars', value: 'true' },
-    { key: 'forcePasswordReset', value: 'false' },
   ];
 
   for (const setting of settings) {

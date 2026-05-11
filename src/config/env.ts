@@ -28,6 +28,12 @@ const envSchema = z.object({
   SES_FROM_EMAIL: z.string().default('noreply@caft.financial'),
   SES_FROM_NAME: z.string().default('CAFT Financial'),
 
+  // S3 Course Media
+  S3_COURSE_BUCKET: z.string().default('caft-academy-media-prod'),
+  CLOUDFRONT_DOMAIN: z.string().default(''),
+  CLOUDFRONT_KEY_PAIR_ID: z.string().default(''),
+  CLOUDFRONT_PRIVATE_KEY: z.string().default(''),
+
   APP_NAME: z.string().default('CAFT Financial'),
   APP_URL: z.string().default('http://localhost:3000'),
 

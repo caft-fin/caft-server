@@ -36,6 +36,7 @@ import analyticsRoutes from './routes/analytics.routes';
 import reviewRoutes from './routes/review.routes';
 import uploadRoutes from './routes/upload.routes';
 import purchaseRoutes from './routes/purchase.routes';
+import dataPoolRoutes from './routes/dataPool.routes';
 
 const app = express();
 
@@ -85,6 +86,7 @@ app.use('/api/admin/analytics', analyticsRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/purchases', purchaseRoutes);
+app.use('/api/dp', dataPoolRoutes);
 
 // ── Public Settings (no auth required) ───────────────────
 import { AdminController } from './controllers/admin.controller';
@@ -166,6 +168,9 @@ app.use((_req, res) => {
 
 app.use(errorHandler);
 
+import cron from 'node-cron';
+import { CourseAnalyticsService } from './services/courseAnalytics.service';
+
 // ── Server Start ─────────────────────────────────────────
 
 async function bootstrap() {
@@ -185,6 +190,17 @@ async function bootstrap() {
       console.log(`   Health:      http://localhost:${env.PORT}/api/health`);
       console.log(`   CORS:        ${env.CORS_ORIGIN}\n`);
     });
+
+    // Schedule hourly analytics aggregation (runs at minute 0 of every hour)
+    cron.schedule('0 * * * *', async () => {
+      console.log('⏳ Triggering scheduled analytics aggregation...');
+      try {
+        await CourseAnalyticsService.runAggregationJob();
+      } catch (err) {
+        console.error('❌ Scheduled aggregation failed:', err);
+      }
+    });
+    console.log('✅ Scheduled hourly analytics aggregation job');
   } catch (error) {
     console.error('❌ Failed to start server:', error);
     process.exit(1);

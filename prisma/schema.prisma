@@ -98,6 +98,32 @@ enum EmailDeliveryStatus {
   FAILED
 }
 
+enum VideoEventType {
+  PLAY
+  PAUSE
+  SEEK
+  FAST_FORWARD
+  REWIND
+  SKIP_SECTION
+  COMPLETE
+  EXIT
+  REPLAY
+}
+
+enum CourseAccessType {
+  FREE
+  PREVIEW
+  FULL
+}
+
+enum BadgeType {
+  COURSE_COMPLETE
+  FAST_LEARNER
+  STREAK_7_DAY
+  FIRST_COURSE
+  TOP_REVIEWER
+}
+
 // ── User ─────────────────────────────────────────────────
 
 model User {
@@ -144,6 +170,14 @@ model User {
   campaignRecipients EmailRecipient[]
   auditLogs          AuditLog[]
   reviews            Review[]
+
+  // Course platform relations
+  courseEnrollments  CourseEnrollment[]
+  videoProgress     VideoProgress[]
+  videoEvents       VideoEvent[]
+  courseCompletions  CourseCompletion[]
+  courseBadges      Badge[]
+  courseFeedback    CourseFeedback[]
 
   @@index([email])
   @@index([role])
@@ -237,6 +271,7 @@ model Plan {
   pricing       PlanPricing[]
   subscriptions Subscription[]
   purchases     Purchase[]
+  courses       Course[]       // Courses gated by this plan
   bundlePlans   BundlePlan[]
   reviews       Review[]
 
@@ -639,4 +674,241 @@ model CategoryPricing {
   updatedAt DateTime @updatedAt
 
   @@map("category_pricing")
+}
+
+// ══════════════════════════════════════════════════════════
+// CAFT Academy — Course Platform Models
+// ══════════════════════════════════════════════════════════
+
+// ── Course ───────────────────────────────────────────────
+
+model Course {
+  id            String   @id @default(uuid())
+  title         String
+  slug          String   @unique
+  description   String   @db.Text
+  thumbnailUrl  String?
+  trailerUrl    String?  // Public URL for trailer
+  trailerS3Key  String?  // S3 key for trailer video
+  price         Int      @default(0)     // in paise
+  currency      String   @default("INR")
+  isPublished   Boolean  @default(false)
+  isFeatured    Boolean  @default(false)
+  difficulty    String?  // beginner, intermediate, advanced
+  language      String   @default("en")
+  totalDuration Int      @default(0)     // total seconds across all videos
+  totalVideos   Int      @default(0)
+
+  // Link to existing Plan system for subscription gating
+  planId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plan             Plan?              @relation(fields: [planId], references: [id])
+  sections         CourseSection[]
+  videos           Video[]
+  enrollments      CourseEnrollment[]
+  completions      CourseCompletion[]
+  badges           Badge[]
+  feedback         CourseFeedback[]
+  videoAnalytics   VideoAnalytics[]
+
+  @@index([isPublished])
+  @@index([planId])
+  @@index([slug])
+  @@map("courses")
+}
+
+// ── Course Section ───────────────────────────────────────
+
+model CourseSection {
+  id         String @id @default(uuid())
+  courseId   String
+  title      String
+  orderIndex Int    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  course Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  videos Video[]
+
+  @@index([courseId])
+  @@map("course_sections")
+}
+
+// ── Video ────────────────────────────────────────────────
+
+model Video {
+  id                     String  @id @default(uuid())
+  sectionId              String
+  courseId               String
+  title                  String
+  description            String? @db.Text
+  s3Key                  String  // Full path in S3 bucket
+  cloudfrontUrl          String? // Cached CloudFront/presigned URL
+  durationSeconds        Int     @default(0)
+  isPreview              Boolean @default(false)
+  previewDurationSeconds Int     @default(60) // seconds allowed without subscription
+  orderIndex             Int     @default(0)
+  isPublished            Boolean @default(true)
+  thumbnailUrl           String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  section       CourseSection   @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  course        Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  videoProgress VideoProgress[]
+  videoEvents   VideoEvent[]
+  analytics     VideoAnalytics?
+
+  @@index([courseId])
+  @@index([sectionId])
+  @@index([isPreview])
+  @@index([orderIndex])
+  @@map("videos")
+}
+
+// ── Course Enrollment ────────────────────────────────────
+
+model CourseEnrollment {
+  id             String          @id @default(uuid())
+  userId         String
+  courseId        String
+  subscriptionId String?         // Link to existing Subscription
+  purchaseId     String?         // Link to one-time purchase
+  accessType     CourseAccessType @default(FULL)
+  isActive       Boolean         @default(true)
+  enrolledAt     DateTime        @default(now())
+  expiresAt      DateTime?
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("course_enrollments")
+}
+
+// ── Video Progress ───────────────────────────────────────
+
+model VideoProgress {
+  id                    String   @id @default(uuid())
+  userId                String
+  videoId               String
+  courseId               String
+  watchedSeconds        Int      @default(0)
+  completionPercentage  Float    @default(0)
+  isCompleted           Boolean  @default(false)
+  lastWatchedAt         DateTime @default(now())
+  resumePositionSeconds Int      @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User  @relation(fields: [userId], references: [id])
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@index([userId, courseId])
+  @@index([lastWatchedAt])
+  @@map("video_progress")
+}
+
+// ── Video Event (Behavioral Tracking) ────────────────────
+
+model VideoEvent {
+  id              String         @id @default(uuid())
+  userId          String
+  videoId         String
+  eventType       VideoEventType
+  eventTimestamp  DateTime       @default(now())
+  positionSeconds Int            @default(0)
+  metadataJson    Json?          // Extra data (from_pos, to_pos, etc.)
+
+  user  User  @relation(fields: [userId], references: [id])
+  video Video @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([videoId])
+  @@index([eventType])
+  @@index([eventTimestamp])
+  @@map("video_events")
+}
+
+// ── Course Completion ────────────────────────────────────
+
+model CourseCompletion {
+  id             String   @id @default(uuid())
+  userId         String
+  courseId        String
+  completedAt    DateTime @default(now())
+  certificateUrl String?  // S3 URL of generated PDF
+  certificateId  String?  @unique // Unique cert verification ID
+  badgeAwarded   Boolean  @default(false)
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@index([userId])
+  @@map("course_completions")
+}
+
+// ── Badge ────────────────────────────────────────────────
+
+model Badge {
+  id        String    @id @default(uuid())
+  userId    String
+  courseId  String?
+  badgeType BadgeType
+  awardedAt DateTime  @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  course Course? @relation(fields: [courseId], references: [id])
+
+  @@index([userId])
+  @@map("badges")
+}
+
+// ── Video Analytics (Aggregated) ─────────────────────────
+
+model VideoAnalytics {
+  id               String @id @default(uuid())
+  videoId          String @unique
+  courseId         String
+  totalViews       Int    @default(0)
+  uniqueViewers    Int    @default(0)
+  avgWatchDuration Float  @default(0) // in seconds
+  completionRate   Float  @default(0) // 0.0 to 100.0
+
+  updatedAt DateTime @updatedAt
+
+  video  Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@index([courseId])
+  @@map("video_analytics")
+}
+
+// ── Course Feedback ──────────────────────────────────────
+
+model CourseFeedback {
+  id          String   @id @default(uuid())
+  userId      String
+  courseId    String
+  rating      Int      // 1 to 5
+  reviewText  String?  @db.Text
+  submittedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+  @@index([rating])
+  @@map("course_feedback")
 }

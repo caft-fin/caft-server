@@ -82,11 +82,13 @@ export class ApiResponse {
 export class AppError extends Error {
   statusCode: number;
   isOperational: boolean;
+  data?: any;
 
-  constructor(message: string, statusCode: number, isOperational = true) {
+  constructor(message: string, statusCode: number, isOperational = true, data?: any) {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = isOperational;
+    this.data = data;
     Error.captureStackTrace(this, this.constructor);
   }
 }

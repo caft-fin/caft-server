@@ -10,8 +10,10 @@ let sesClient: SESv2Client;
 
 function getSesClient(): SESv2Client {
   if (!sesClient) {
+    // SES is explicitly configured in ap-south-2 (Hyderabad).
+    const sesRegion = process.env.SES_REGION || 'ap-south-2';
     sesClient = new SESv2Client({
-      region: env.AWS_REGION,
+      region: sesRegion,
       credentials: {
         accessKeyId: env.AWS_ACCESS_KEY_ID,
         secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
@@ -25,7 +27,8 @@ async function sendEmail(to: string, subject: string, htmlBody: string): Promise
   try {
     const client = getSesClient();
     await client.send(new SendEmailCommand({
-      FromEmailAddress: `${env.SES_FROM_NAME} <${env.SES_FROM_EMAIL}>`,
+      // Wrap name in quotes to prevent parsing errors with spaces
+      FromEmailAddress: `"${env.SES_FROM_NAME}" <${env.SES_FROM_EMAIL}>`,
       Destination: { ToAddresses: [to] },
       Content: {
         Simple: {
