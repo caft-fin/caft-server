@@ -902,6 +902,10 @@ export class DataPoolService {
     orderIndex?: number;
     thumbnailUrl?: string;
   }) {
+    if (!data.sectionId || data.sectionId.trim() === '') {
+      throw new AppError('A valid section is required to upload a video', 400);
+    }
+
     const section = await prisma.courseSection.findUnique({ where: { id: data.sectionId } });
     if (!section) throw new AppError('Section not found', 404);
 
