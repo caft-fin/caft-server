@@ -15,7 +15,9 @@ router.post('/login', authLimiter, AuthController.login);
 router.post('/verify-otp', authLimiter, AuthController.verifyOtp);
 router.post('/admin/login', authLimiter, AuthController.adminLogin);
 router.post('/refresh', AuthController.refresh);
-router.post('/logout', authenticate, AuthController.logout);
+// Logout does not require a valid access token — the refresh cookie is enough for revocation,
+// and users must be able to log out even when their access token has already expired.
+router.post('/logout', AuthController.logout);
 
 // ── Google OAuth2 ─────────────────────────────────────────
 
@@ -37,13 +39,14 @@ router.get('/google/callback', async (req: Request, res: Response, next: NextFun
 
     const result = await GoogleOAuthService.handleCallback(code);
 
-    // Redirect to frontend with tokens in URL hash (not query params for security)
-    const params = new URLSearchParams({
-      accessToken: result.accessToken,
-      refreshToken: result.refreshToken,
-      user: JSON.stringify(result.user),
-    });
+    // Set httpOnly auth cookies before redirecting — tokens never appear in the URL.
+    const isProduction = env.NODE_ENV === 'production';
+    const cookieBase = { httpOnly: true, secure: isProduction, sameSite: 'lax' as const, path: '/' };
+    res.cookie('caft_access', result.accessToken, { ...cookieBase, maxAge: 15 * 60 * 1000 });
+    res.cookie('caft_refresh', result.refreshToken, { ...cookieBase, maxAge: 7 * 24 * 60 * 60 * 1000 });
 
+    // Pass only the non-sensitive user object so the callback page can populate Zustand
+    const params = new URLSearchParams({ user: JSON.stringify(result.user) });
     res.redirect(`${env.APP_URL}/login/google-callback?${params.toString()}`);
   } catch (error: any) {
     console.error('❌ Google OAuth callback error:', error?.message || error);

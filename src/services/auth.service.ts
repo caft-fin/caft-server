@@ -85,12 +85,15 @@ export class AuthService {
 
     await prisma.otpToken.create({ data: { userId: user.id, code: otp, expiresAt } });
 
-    // Print OTP to terminal for development convenience
-    console.log(`\n🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-    console.log(`   OTP for ${email}: ${otp}`);
-    console.log(`   Expires at: ${expiresAt.toLocaleTimeString()}`);
-    if (isTestAccount) console.log(`   ⚙️  Test account mode (admin-configurable)`);
-    console.log(`🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+    // Print OTP to terminal in non-production environments only
+    // In production, OTP must only travel via the SES email channel.
+    if (env.NODE_ENV !== 'production') {
+      console.log(`\n🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+      console.log(`   OTP for ${email}: ${otp}`);
+      console.log(`   Expires at: ${expiresAt.toLocaleTimeString()}`);
+      if (isTestAccount) console.log(`   ⚙️  Test account mode (admin-configurable)`);
+      console.log(`🔑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
+    }
 
     // Send via email in background (don't block the response)
     EmailService.sendOtpEmail(email, otp, user.name).catch(err => {

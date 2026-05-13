@@ -176,6 +176,7 @@ model User {
   videoProgress     VideoProgress[]
   videoEvents       VideoEvent[]
   courseCompletions  CourseCompletion[]
+  coursePayments    CoursePayment[]
   courseBadges      Badge[]
   courseFeedback    CourseFeedback[]
 
@@ -462,6 +463,11 @@ model Transaction {
   userId   String
   title    String
   subtitle String?
+  // NOTE: `amount` is stored as a Decimal in rupees (e.g. 1250.50), NOT in paise.
+  // This intentionally differs from other money fields (Plan.oneTimePrice, Payment.amount, etc.)
+  // which are Int paise. Transaction rows are display-only ledger entries written by
+  // the webhook handler — changing them to paise would require a data migration.
+  // TODO: migrate to Int paise in a future release for consistency across the schema.
   amount   Decimal @db.Decimal(12, 2)
   type     String // "debit" | "credit"
   status   String // "Success", "Pending", "Failed", "Settled"
@@ -713,6 +719,7 @@ model Course {
   badges           Badge[]
   feedback         CourseFeedback[]
   videoAnalytics   VideoAnalytics[]
+  coursePayments   CoursePayment[]
 
   @@index([isPublished])
   @@index([planId])
@@ -751,6 +758,8 @@ model Video {
   durationSeconds        Int     @default(0)
   isPreview              Boolean @default(false)
   previewDurationSeconds Int     @default(60) // seconds allowed without subscription
+  previewStartSeconds    Int     @default(0)  // seek to this position when preview starts
+  previewEndSeconds      Int?                 // stop preview here; null = end of video
   orderIndex             Int     @default(0)
   isPublished            Boolean @default(true)
   thumbnailUrl           String?
@@ -856,6 +865,29 @@ model CourseCompletion {
   @@unique([userId, courseId])
   @@index([userId])
   @@map("course_completions")
+}
+
+// ── Course Payment (Direct enrollment, no Plan required) ─
+
+model CoursePayment {
+  id                  String  @id @default(uuid())
+  userId              String
+  courseId            String
+  razorpayOrderId     String? @unique
+  razorpayPaymentId   String?
+  amount              Int     // in paise
+  currency            String  @default("INR")
+  status              String  @default("CREATED") // CREATED | PAID | FAILED
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([courseId])
+  @@map("course_payments")
 }
 
 // ── Badge ────────────────────────────────────────────────

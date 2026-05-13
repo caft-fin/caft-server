@@ -23,8 +23,10 @@ const envSchema = z.object({
   RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
 
   AWS_REGION: z.string().default('ap-south-1'),
-  AWS_ACCESS_KEY_ID: z.string(),
-  AWS_SECRET_ACCESS_KEY: z.string(),
+  // Optional: when absent the AWS SDK uses the EC2/ECS instance role (recommended in production).
+  // Set these only for local development or environments without instance roles.
+  AWS_ACCESS_KEY_ID: z.string().optional(),
+  AWS_SECRET_ACCESS_KEY: z.string().optional(),
   SES_ACCESS_KEY_ID: z.string().optional(),
   SES_SECRET_ACCESS_KEY: z.string().optional(),
   SES_FROM_EMAIL: z.string().default('noreply@caft.financial'),

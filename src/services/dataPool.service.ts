@@ -6,6 +6,7 @@
 import { prisma } from '../config/database';
 import { CourseMediaService } from './courseMedia.service';
 import { CertificateService } from './certificate.service';
+import { RazorpayService } from './razorpay.service';
 import { AppError } from '../utils/apiResponse';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -44,6 +45,8 @@ export class DataPoolService {
                 durationSeconds: true,
                 isPreview: true,
                 previewDurationSeconds: true,
+                previewStartSeconds: true,
+                previewEndSeconds: true,
                 orderIndex: true,
                 thumbnailUrl: true,
                 s3Key: true,
@@ -150,6 +153,7 @@ export class DataPoolService {
         totalVideos: course.totalVideos,
         isPublished: course.isPublished,
         isFeatured: course.isFeatured,
+        planId: course.planId,
         sections: course.sections.map(section => ({
           id: section.id,
           title: section.title,
@@ -336,6 +340,136 @@ export class DataPoolService {
         totalWatchTimeSeconds: totalWatchTime,
       },
     };
+  }
+
+  // ══════════════════════════════════════════════════════
+  // GET /api/dp/video/:videoId/preview-stream — Public preview
+  // ══════════════════════════════════════════════════════
+
+  static async getPreviewVideoStream(videoId: string) {
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: {
+        id: true,
+        s3Key: true,
+        isPreview: true,
+        isPublished: true,
+        durationSeconds: true,
+        previewStartSeconds: true,
+        previewEndSeconds: true,
+        title: true,
+        thumbnailUrl: true,
+      },
+    });
+
+    if (!video) throw new AppError('Video not found', 404);
+    if (!video.isPreview) throw new AppError('This video is not available for free preview', 403);
+    if (!video.isPublished) throw new AppError('Video not available', 404);
+
+    const streamUrl = await CourseMediaService.getStreamUrl(video.s3Key);
+    return {
+      streamUrl,
+      previewStartSeconds: video.previewStartSeconds,
+      previewEndSeconds: video.previewEndSeconds,
+      durationSeconds: video.durationSeconds,
+      title: video.title,
+      thumbnailUrl: video.thumbnailUrl,
+    };
+  }
+
+  // ══════════════════════════════════════════════════════
+  // POST /api/dp/course/:courseId/purchase — Direct enroll
+  // ══════════════════════════════════════════════════════
+
+  static async createCourseOrder(courseId: string, userId: string) {
+    const course = await prisma.course.findUnique({ where: { id: courseId } });
+    if (!course || !course.isPublished) throw new AppError('Course not found', 404);
+
+    // Already enrolled?
+    const existing = await prisma.courseEnrollment.findUnique({
+      where: { userId_courseId: { userId, courseId } },
+    });
+    if (existing?.isActive) throw new AppError('You are already enrolled in this course', 409);
+
+    // Free course — enroll immediately
+    if (course.price === 0) {
+      await prisma.courseEnrollment.upsert({
+        where: { userId_courseId: { userId, courseId } },
+        create: { userId, courseId, accessType: 'FULL', isActive: true },
+        update: { isActive: true, accessType: 'FULL' },
+      });
+      return { enrolled: true };
+    }
+
+    // Paid course — create Razorpay order
+    const order = await RazorpayService.createOrder({
+      amount: course.price,
+      currency: course.currency || 'INR',
+      description: `Course Enrollment: ${course.title}`,
+      notes: { courseId, userId, type: 'course_enrollment' },
+    });
+
+    // Remove stale CREATED orders for this user+course
+    await prisma.coursePayment.deleteMany({ where: { userId, courseId, status: 'CREATED' } });
+
+    const orderAmount = typeof order.amount === 'string' ? parseInt(order.amount, 10) : order.amount;
+
+    const payment = await prisma.coursePayment.create({
+      data: {
+        userId, courseId,
+        razorpayOrderId: order.orderId,
+        amount: orderAmount,
+        currency: order.currency,
+        status: 'CREATED',
+      },
+    });
+
+    return {
+      enrolled: false,
+      paymentId: payment.id,
+      orderId: order.orderId,
+      amount: orderAmount,
+      currency: order.currency,
+    };
+  }
+
+  // ══════════════════════════════════════════════════════
+  // POST /api/dp/course/:courseId/purchase/verify
+  // ══════════════════════════════════════════════════════
+
+  static async verifyCoursePayment(
+    courseId: string,
+    userId: string,
+    paymentId: string,
+    razorpayPaymentId: string,
+    razorpayOrderId: string,
+    razorpaySignature: string,
+  ) {
+    const isValid = RazorpayService.verifyPaymentSignature({
+      orderId: razorpayOrderId,
+      paymentId: razorpayPaymentId,
+      signature: razorpaySignature,
+    });
+    if (!isValid) throw new AppError('Invalid payment signature — potential fraud attempt', 400);
+
+    const payment = await prisma.coursePayment.findUnique({ where: { id: paymentId } });
+    if (!payment || payment.userId !== userId || payment.courseId !== courseId) {
+      throw new AppError('Payment record not found', 404);
+    }
+    if (payment.status === 'PAID') return { message: 'Payment already verified' };
+
+    await prisma.coursePayment.update({
+      where: { id: paymentId },
+      data: { status: 'PAID', razorpayPaymentId },
+    });
+
+    await prisma.courseEnrollment.upsert({
+      where: { userId_courseId: { userId, courseId } },
+      create: { userId, courseId, accessType: 'FULL', isActive: true },
+      update: { isActive: true, accessType: 'FULL' },
+    });
+
+    return { message: 'Payment verified and enrolled successfully' };
   }
 
   // ══════════════════════════════════════════════════════
@@ -754,6 +888,7 @@ export class DataPoolService {
         totalDuration: true,
         totalVideos: true,
         isFeatured: true,
+        planId: true,
         _count: { select: { enrollments: true, feedback: true } },
         feedback: { select: { rating: true } },
       },
@@ -795,12 +930,19 @@ export class DataPoolService {
         isPublished: true,
         createdAt: true,
         _count: { select: { enrollments: true, feedback: true, sections: true } },
-        sections: { 
-          select: { 
+        sections: {
+          select: {
             id: true, title: true, orderIndex: true,
-            videos: { select: { id: true, title: true, description: true, durationSeconds: true, isPublished: true, isPreview: true, orderIndex: true }, orderBy: { orderIndex: 'asc' } }
-          }, 
-          orderBy: { orderIndex: 'asc' } 
+            videos: {
+              select: {
+                id: true, title: true, description: true,
+                durationSeconds: true, isPublished: true, isPreview: true,
+                orderIndex: true, thumbnailUrl: true, s3Key: true,
+              },
+              orderBy: { orderIndex: 'asc' },
+            },
+          },
+          orderBy: { orderIndex: 'asc' }
         },
         feedback: { select: { rating: true } },
       },
@@ -826,7 +968,7 @@ export class DataPoolService {
   static async updateCourse(courseId: string, data: {
     title?: string; description?: string; price?: number;
     difficulty?: string; isPublished?: boolean; isFeatured?: boolean;
-    thumbnailUrl?: string; trailerUrl?: string; trailerS3Key?: string;
+    thumbnailUrl?: string | null; trailerUrl?: string | null; trailerS3Key?: string | null;
   }) {
     const course = await prisma.course.findUnique({ where: { id: courseId } });
     if (!course) throw new AppError('Course not found', 404);
@@ -894,13 +1036,13 @@ export class DataPoolService {
     courseId: string;
     sectionId: string;
     title: string;
-    description?: string;
+    description?: string | null;
     s3Key: string;
     durationSeconds?: number;
     isPreview?: boolean;
     previewDurationSeconds?: number;
     orderIndex?: number;
-    thumbnailUrl?: string;
+    thumbnailUrl?: string | null;
   }) {
     if (!data.sectionId || data.sectionId.trim() === '') {
       throw new AppError('A valid section is required to upload a video', 400);
@@ -949,13 +1091,15 @@ export class DataPoolService {
 
   static async updateVideo(videoId: string, data: {
     title?: string;
-    description?: string;
+    description?: string | null;
     durationSeconds?: number;
     isPreview?: boolean;
     previewDurationSeconds?: number;
+    previewStartSeconds?: number;
+    previewEndSeconds?: number | null;
     orderIndex?: number;
     isPublished?: boolean;
-    thumbnailUrl?: string;
+    thumbnailUrl?: string | null;
   }) {
     const video = await prisma.video.update({
       where: { id: videoId },

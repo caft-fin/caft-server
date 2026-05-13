@@ -210,6 +210,17 @@ export class PurchaseService {
       throw new AppError('Purchase not found', 404);
     }
 
+    // Idempotency: if this purchase was already verified and paid, return success
+    // without re-running the side-effects (stock increment, payment record creation).
+    // This covers webhook retries and double-tap of the verify endpoint.
+    if (purchase.status === 'PAID') {
+      return { message: 'Payment already verified and purchase completed' };
+    }
+
+    if (purchase.status !== 'CREATED') {
+      throw new AppError(`Cannot verify a purchase in '${purchase.status}' status`, 409);
+    }
+
     // Update purchase status to PAID
     await prisma.purchase.update({
       where: { id: purchase.id },
@@ -240,6 +251,39 @@ export class PurchaseService {
     });
 
     await CacheService.del(CACHE_KEYS.USER_SUBSCRIPTION(userId));
+
+    // ── Auto-enroll in any courses linked to this plan ────────────
+    // Non-fatal: if enrollment creation fails, the webhook or a
+    // subsequent getCourse call will re-trigger it.
+    try {
+      const linkedCourses = await prisma.course.findMany({
+        where: { planId: purchase.planId, isPublished: true },
+        select: { id: true },
+      });
+      if (linkedCourses.length > 0) {
+        await Promise.all(
+          linkedCourses.map(course =>
+            prisma.courseEnrollment.upsert({
+              where: { userId_courseId: { userId, courseId: course.id } },
+              create: {
+                userId,
+                courseId: course.id,
+                purchaseId: purchase.id,
+                accessType: 'FULL',
+                isActive: true,
+              },
+              update: {
+                isActive: true,
+                accessType: 'FULL',
+                purchaseId: purchase.id,
+              },
+            }),
+          ),
+        );
+      }
+    } catch (enrollErr) {
+      console.error('[PurchaseService] Auto-enrollment failed (non-fatal):', enrollErr);
+    }
 
     return { message: 'Payment verified and purchase completed' };
   }

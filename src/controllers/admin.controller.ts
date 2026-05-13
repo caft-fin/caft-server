@@ -259,7 +259,9 @@ export class AdminController {
           activeUsers,
           totalRevenue: totalRevenue._sum.amount || 0,
           activeSubscriptions: activeSubs,
-          securityScore: 98.2,
+          // securityScore is computed by a dedicated security audit job (not yet implemented).
+          // A hardcoded value was removed — the frontend should treat null as "N/A".
+          securityScore: null,
         };
       });
 
@@ -415,6 +417,33 @@ export class AdminController {
     } catch (error) { next(error); }
   }
 
+  /**
+   * Column names that must never appear in Danger Zone responses.
+   * Protects passwords, OTP codes, raw tokens, and private key material.
+   */
+  private static readonly SENSITIVE_COLUMNS = new Set([
+    'password',
+    'passwordHash',
+    'code',          // OtpToken.code (the OTP itself)
+    'token',         // RefreshToken.token
+    'secret',
+    'privateKey',
+    'CLOUDFRONT_PRIVATE_KEY',
+  ]);
+
+  /** Strip sensitive fields from a single DB record */
+  private static redactRecord(record: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (AdminController.SENSITIVE_COLUMNS.has(key)) {
+        out[key] = '[REDACTED]';
+      } else {
+        out[key] = value;
+      }
+    }
+    return out;
+  }
+
   /** GET /api/admin/danger/tables/:table — Get all records from a table */
   static async getTableRecords(req: Request, res: Response, next: NextFunction) {
     try {
@@ -441,13 +470,16 @@ export class AdminController {
         delegate.count(),
       ]);
 
-      // Serialize BigInt/Decimal values to strings for JSON
-      const serialized = JSON.parse(JSON.stringify(records, (_key: string, v: any) =>
-        typeof v === 'bigint' ? v.toString() : v
-      ));
+      // Serialize BigInt/Decimal values to strings for JSON, then redact sensitive fields
+      const serialized: Record<string, unknown>[] = JSON.parse(
+        JSON.stringify(records, (_key: string, v: any) =>
+          typeof v === 'bigint' ? v.toString() : v
+        )
+      );
+      const redacted = serialized.map((r) => AdminController.redactRecord(r));
 
       const totalPages = Math.ceil(total / limit);
-      ApiResponse.paginated(res, serialized, {
+      ApiResponse.paginated(res, redacted, {
         total,
         page,
         limit,

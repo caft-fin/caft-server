@@ -37,15 +37,33 @@ export class SubscriptionService {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new AppError('User not found', 404);
 
-    // Clean up stale CREATED subscriptions (user opened Razorpay modal but closed without paying)
-    // These are abandoned checkouts — safe to remove so the user can try again.
-    const staleCreated = await prisma.subscription.findMany({
-      where: { userId, status: 'CREATED' },
-    });
-    if (staleCreated.length > 0) {
-      await prisma.subscription.deleteMany({
-        where: { userId, status: 'CREATED' },
+    // Clean up stale CREATED subscriptions (user opened Razorpay modal but closed without paying).
+    // CREATED is the very first state in the Razorpay state machine — the user has NOT yet
+    // completed authentication or payment, so no Payment record or Razorpay subscription
+    // charge exists for these rows. It is safe to hard-delete them.
+    //
+    // Safety assertion: confirm no Payment rows reference these subscriptions before deleting.
+    // (The FK on Payment.subscriptionId is nullable, so CREATED subs should have zero payments.)
+    const staleIds = await prisma.subscription
+      .findMany({ where: { userId, status: 'CREATED' }, select: { id: true } })
+      .then((rows) => rows.map((r) => r.id));
+
+    if (staleIds.length > 0) {
+      const linkedPayments = await prisma.payment.count({
+        where: { subscriptionId: { in: staleIds } },
       });
+
+      if (linkedPayments > 0) {
+        // Unexpected state — log and skip deletion rather than orphaning payments.
+        console.warn(
+          `[SubscriptionService] Skipping deletion of ${staleIds.length} CREATED subscription(s) ` +
+          `for user ${userId}: found ${linkedPayments} linked Payment record(s). Needs manual review.`
+        );
+      } else {
+        await prisma.subscription.deleteMany({
+          where: { id: { in: staleIds } },
+        });
+      }
     }
 
     const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(planId);

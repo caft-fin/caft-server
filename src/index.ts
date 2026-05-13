@@ -21,7 +21,7 @@ import { env } from './config/env';
 import { connectRedis, disconnectRedis } from './config/redis';
 import { prisma } from './config/database';
 import { errorHandler } from './middleware/errorHandler';
-import { apiLimiter } from './middleware/rateLimiter';
+import { apiLimiter, memoryStoreCleanupInterval } from './middleware/rateLimiter';
 import { authenticate } from './middleware/auth';
 
 // Route imports
@@ -228,6 +228,7 @@ async function bootstrap() {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('🔄 SIGTERM received, shutting down gracefully...');
+  clearInterval(memoryStoreCleanupInterval);
   await prisma.$disconnect();
   await disconnectRedis();
   process.exit(0);
@@ -235,6 +236,7 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   console.log('🔄 SIGINT received, shutting down gracefully...');
+  clearInterval(memoryStoreCleanupInterval);
   await prisma.$disconnect();
   await disconnectRedis();
   process.exit(0);

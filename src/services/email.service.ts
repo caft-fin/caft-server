@@ -14,14 +14,14 @@ function getSesClient(): SESv2Client {
     const sesRegion = process.env.SES_REGION || 'ap-south-2';
     // Use dedicated SES credentials if provided (SES may be in a different AWS account),
     // otherwise fall back to the main AWS credentials.
+    // Prefer dedicated SES credentials; fall back to main AWS creds; then instance role
     const accessKeyId = env.SES_ACCESS_KEY_ID || env.AWS_ACCESS_KEY_ID;
     const secretAccessKey = env.SES_SECRET_ACCESS_KEY || env.AWS_SECRET_ACCESS_KEY;
     sesClient = new SESv2Client({
       region: sesRegion,
-      credentials: {
-        accessKeyId,
-        secretAccessKey,
-      },
+      ...(accessKeyId && secretAccessKey
+        ? { credentials: { accessKeyId, secretAccessKey } }
+        : {}),
     });
   }
   return sesClient;

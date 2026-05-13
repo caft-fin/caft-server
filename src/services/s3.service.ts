@@ -8,16 +8,24 @@ import { env } from '../config/env';
 import { AppError } from '../utils/apiResponse';
 import crypto from 'crypto';
 
-const bucketName = 'caft-financial-assets-dev-12345';
-const region = env.AWS_REGION || 'us-east-1';
+// C2: Read bucket name from env (defaults already set in env.ts)
+const bucketName = env.S3_COURSE_BUCKET;
 
-// We initialize the client with explicit credentials from env
-const s3Client = new S3Client({ 
+// C4: env.AWS_REGION already defaults to 'ap-south-1' in env.ts — no hardcoded fallback
+const region = env.AWS_REGION;
+
+// C3: Pass explicit credentials only when both env vars are present.
+// On EC2/ECS, leave credentials unset so the AWS SDK uses the instance/task role instead.
+const s3Client = new S3Client({
   region,
-  credentials: {
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-  },
+  ...(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY
+    ? {
+        credentials: {
+          accessKeyId: env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+        },
+      }
+    : {}),
 });
 
 export class S3Service {

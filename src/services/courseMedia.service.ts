@@ -13,12 +13,17 @@ const COURSE_BUCKET = env.S3_COURSE_BUCKET;
 const region = env.AWS_REGION;
 const CLOUDFRONT_DOMAIN = env.CLOUDFRONT_DOMAIN;
 
+// Pass explicit credentials only when both are set; otherwise SDK uses the instance/task role
 const s3Client = new S3Client({
   region,
-  credentials: {
-    accessKeyId: env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
-  },
+  ...(env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY
+    ? {
+        credentials: {
+          accessKeyId: env.AWS_ACCESS_KEY_ID,
+          secretAccessKey: env.AWS_SECRET_ACCESS_KEY,
+        },
+      }
+    : {}),
 });
 
 export class CourseMediaService {

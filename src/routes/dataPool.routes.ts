@@ -4,7 +4,7 @@
 
 import { Router } from 'express';
 import { DataPoolController } from '../controllers/dataPool.controller';
-import { authenticate } from '../middleware/auth';
+import { authenticate, optionalAuthenticate } from '../middleware/auth';
 import { adminGuard } from '../middleware/adminAuth';
 
 const router = Router();
@@ -14,14 +14,21 @@ const router = Router();
 // List all published courses
 router.get('/courses', DataPoolController.listCourses);
 
-// Optional auth: Get course by ID or Slug
-router.get('/course/:courseId', authenticate, DataPoolController.getCourse);
-router.get('/course/slug/:slug', authenticate, DataPoolController.getCourseBySlug);
+// Optional auth: Get course by ID or Slug (guests get course data without enrollment info)
+router.get('/course/:courseId', optionalAuthenticate, DataPoolController.getCourse);
+router.get('/course/slug/:slug', optionalAuthenticate, DataPoolController.getCourseBySlug);
 
 // ── User Authenticated Routes ────────────────────────────
 
 // User dashboard
 router.get('/user/dashboard', authenticate, DataPoolController.getUserDashboard);
+
+// Direct course enrollment + payment
+router.post('/course/:courseId/purchase', authenticate, DataPoolController.createCourseOrder);
+router.post('/course/:courseId/purchase/verify', authenticate, DataPoolController.verifyCoursePayment);
+
+// Public preview stream (no auth required — validates isPreview flag server-side)
+router.get('/video/:videoId/preview-stream', DataPoolController.getPreviewVideoStream);
 
 // Video streaming and progress
 router.get('/video/:videoId/stream', authenticate, DataPoolController.getVideoStream);
@@ -51,6 +58,8 @@ router.delete('/admin/sections/:sectionId', authenticate, adminGuard, DataPoolCo
 router.post('/admin/videos', authenticate, adminGuard, DataPoolController.createVideo);
 router.put('/admin/videos/:videoId', authenticate, adminGuard, DataPoolController.updateVideo);
 router.delete('/admin/videos/:videoId', authenticate, adminGuard, DataPoolController.deleteVideo);
+// Admin: Video preview (signed stream URL, bypasses enrollment)
+router.get('/admin/videos/:videoId/stream', authenticate, adminGuard, DataPoolController.getAdminVideoStream);
 
 // Admin: Analytics
 router.get('/admin/analytics/platform', authenticate, adminGuard, DataPoolController.getPlatformMetrics);

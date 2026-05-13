@@ -15,8 +15,10 @@ interface RateLimitOptions {
 // In-memory fallback store for when Redis is unavailable
 const memoryStore = new Map<string, { count: number; expiresAt: number }>();
 
-// Periodically clean expired entries from memory store (every 60 seconds)
-setInterval(() => {
+// Periodically clean expired entries from memory store (every 60 seconds).
+// The handle is exported so the shutdown handler in index.ts can clear it
+// and prevent the process from being kept alive past SIGTERM/SIGINT.
+export const memoryStoreCleanupInterval: NodeJS.Timeout = setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of memoryStore) {
     if (entry.expiresAt <= now) memoryStore.delete(key);
